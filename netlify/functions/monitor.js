@@ -9,9 +9,7 @@
 const https    = require('https');
 const http     = require('http');
 const { URL }  = require('url');
-
-// Netlify scheduled function — every minute
-module.exports.config = { schedule: '* * * * *' };
+const { schedule } = require('@netlify/functions');
 
 // ── CONFIG FROM ENV VARS ──────────────────────
 const GITHUB_TOKEN  = process.env.GITHUB_TOKEN;
@@ -21,8 +19,8 @@ const CHECK_TIMEOUT = 10000;
 const MAX_CHECKS    = 2000;
 const MAX_INCIDENTS = 5000;
 
-// ── HANDLER ──────────────────────────────────
-exports.handler = async () => {
+// ── SCHEDULED HANDLER ────────────────────────
+const handler = async () => {
   if (!GITHUB_TOKEN || !GIST_ID) {
     console.error('Missing GITHUB_TOKEN or GIST_ID');
     return { statusCode: 500, body: 'Missing env vars' };
@@ -99,6 +97,9 @@ exports.handler = async () => {
   console.log(`[DONE] ${log.join(' | ')}`);
   return { statusCode: 200, body: log.join(', ') };
 };
+
+// Export as scheduled function — runs every 1 minute
+module.exports.handler = schedule('* * * * *', handler);
 
 // ── SITE CHECK ────────────────────────────────
 function checkSite(site) {
