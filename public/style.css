@@ -1020,3 +1020,141 @@ body {
 /* ── SPINNING REFRESH ──────────────────────── */
 .spinning { animation: spin 0.7s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── DISCORD WEBHOOK SECTION ───────────────── */
+.webhook-section {
+  background: var(--bg-card2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.webhook-section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #7289da;
+}
+
+.webhook-section-header svg {
+  width: 16px;
+  height: 16px;
+  color: #7289da;
+}
+
+.label-optional {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-weight: 400;
+  margin-left: 4px;
+}
+
+/* ── ALERT MODE TOGGLE ─────────────────────── */
+.toggle-group {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.toggle-option {
+  cursor: pointer;
+}
+
+.toggle-option input[type="radio"] {
+  display: none;
+}
+
+.toggle-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  background: var(--bg-hover);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  transition: all 0.18s ease;
+  cursor: pointer;
+}
+
+.toggle-option input[type="radio"]:checked + .toggle-card {
+  border-color: var(--blue);
+  background: var(--blue-bg);
+  box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
+}
+
+.toggle-option:hover .toggle-card {
+  border-color: rgba(255,255,255,0.15);
+  background: var(--bg-hover);
+}
+
+.toggle-icon {
+  font-size: 18px;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.toggle-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.toggle-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.toggle-desc {
+  font-size: 10px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── BTN SMALL ─────────────────────────────── */
+.btn-sm {
+  padding: 6px 12px;
+  font-size: 12px;
+  align-self: flex-start;
+}
+
+.btn-sm svg { width: 13px; height: 13px; }
+
+/* ── DISCORD BADGE ON CARD ─────────────────── */
+.discord-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 500;
+  color: #7289da;
+  background: rgba(114,137,218,0.12);
+  border: 1px solid rgba(114,137,218,0.25);
+  padding: 3px 7px;
+  border-radius: 99px;
+  white-space: nowrap;
+  cursor: default;
+}
+
+.discord-badge svg {
+  width: 11px;
+  height: 11px;
+  color: #7289da;
+  flex-shrink: 0;
+}
+
+/* ── CARD FOOTER UPDATE ────────────────────── */
+.footer-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
