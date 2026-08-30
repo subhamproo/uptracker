@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Uptracker — Realtime Website Monitor</title>
+  <link rel="icon" href="assets/icons/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="style.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+</head>
+<body>
+  <!-- Header -->
+  <header class="header">
+    <div class="header-inner">
+      <div class="logo">
+        <svg class="logo-icon" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="16" cy="16" r="14" stroke="url(#logoGrad)" stroke-width="2.5"/>
+          <path d="M10 16 L14 20 L22 12" stroke="url(#logoGrad)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <defs>
+            <linearGradient id="logoGrad" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
+              <stop stop-color="#6EE7B7"/>
+              <stop offset="1" stop-color="#3B82F6"/>
+            </linearGradient>
+          </defs>
+        </svg>
+        <span class="logo-text">Uptracker</span>
+        <span class="logo-badge">LIVE</span>
+      </div>
+      <div class="header-actions">
+        <div class="refresh-info">
+          <span class="refresh-label">Next check in</span>
+          <span class="countdown" id="countdown">30s</span>
+        </div>
+        <button class="btn btn-primary" id="checkNowBtn">
+          <svg viewBox="0 0 20 20" fill="none"><path d="M4 10a6 6 0 1 0 6-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M4 6v4h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Check Now
+        </button>
+        <button class="btn btn-ghost" id="addSiteBtn">
+          <svg viewBox="0 0 20 20" fill="none"><path d="M10 4v12M4 10h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+          Add Site
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Summary Bar -->
+  <div class="summary-bar">
+    <div class="summary-inner">
+      <div class="summary-stat">
+        <span class="summary-num" id="totalSites">0</span>
+        <span class="summary-label">Sites</span>
+      </div>
+      <div class="summary-divider"></div>
+      <div class="summary-stat">
+        <span class="summary-num up" id="sitesUp">0</span>
+        <span class="summary-label">Online</span>
+      </div>
+      <div class="summary-divider"></div>
+      <div class="summary-stat">
+        <span class="summary-num down" id="sitesDown">0</span>
+        <span class="summary-label">Down</span>
+      </div>
+      <div class="summary-divider"></div>
+      <div class="summary-stat">
+        <span class="summary-num" id="avgUptime">—</span>
+        <span class="summary-label">Avg Uptime</span>
+      </div>
+      <div class="summary-divider"></div>
+      <div class="summary-stat">
+        <span class="summary-num" id="avgResponse">—</span>
+        <span class="summary-label">Avg Response</span>
+      </div>
+      <div class="summary-spacer"></div>
+      <div class="last-checked">
+        Last checked: <span id="lastCheckedTime">Never</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main -->
+  <main class="main">
+    <!-- Sites Grid -->
+    <div class="sites-grid" id="sitesGrid">
+      <!-- Site cards rendered by JS -->
+    </div>
+
+    <!-- Empty State -->
+    <div class="empty-state" id="emptyState" style="display:none;">
+      <div class="empty-icon">
+        <svg viewBox="0 0 64 64" fill="none"><circle cx="32" cy="32" r="28" stroke="currentColor" stroke-width="2" stroke-dasharray="6 4" opacity="0.3"/><path d="M20 32 Q32 20 44 32 Q32 44 20 32Z" stroke="currentColor" stroke-width="2" opacity="0.5"/><circle cx="32" cy="32" r="4" fill="currentColor" opacity="0.5"/></svg>
+      </div>
+      <h3>No sites added yet</h3>
+      <p>Add your first website to start monitoring uptime in real time.</p>
+      <button class="btn btn-primary" onclick="document.getElementById('addSiteBtn').click()">
+        Add your first site
+      </button>
+    </div>
+  </main>
+
+  <!-- Incident Log Panel -->
+  <div class="log-panel" id="logPanel">
+    <div class="log-panel-header">
+      <div class="log-panel-title">
+        <svg viewBox="0 0 20 20" fill="none"><path d="M10 2a8 8 0 1 0 0 16A8 8 0 0 0 10 2Z" stroke="currentColor" stroke-width="1.5"/><path d="M10 6v4l2.5 2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        Incident Log — <span id="logSiteName"></span>
+      </div>
+      <button class="log-close" id="logClose">
+        <svg viewBox="0 0 20 20" fill="none"><path d="M5 5l10 10M15 5L5 15" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <div class="log-content" id="logContent">
+      <!-- Log entries rendered by JS -->
+    </div>
+  </div>
+  <div class="log-overlay" id="logOverlay"></div>
+
+  <!-- Add Site Modal -->
+  <div class="modal-overlay" id="modalOverlay">
+    <div class="modal" id="addModal">
+      <div class="modal-header">
+        <h2>Add Website</h2>
+        <button class="modal-close" id="modalClose">
+          <svg viewBox="0 0 20 20" fill="none"><path d="M5 5l10 10M15 5L5 15" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="siteName">Site Name</label>
+          <input type="text" id="siteName" placeholder="e.g. ROI Profit Academy" autocomplete="off" />
+        </div>
+        <div class="form-group">
+          <label for="siteUrl">Website URL</label>
+          <input type="url" id="siteUrl" placeholder="https://example.com" autocomplete="off" />
+        </div>
+        <div class="form-group">
+          <label for="checkInterval">Check Interval</label>
+          <select id="checkInterval">
+            <option value="30">Every 30 seconds</option>
+            <option value="60">Every 1 minute</option>
+            <option value="120">Every 2 minutes</option>
+            <option value="300">Every 5 minutes</option>
+          </select>
+        </div>
+        <div class="modal-error" id="modalError"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" id="modalCancelBtn">Cancel</button>
+        <button class="btn btn-primary" id="modalAddBtn">Add & Monitor</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notifications -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
