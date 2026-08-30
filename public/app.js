@@ -165,8 +165,9 @@ function hydrateFromPayload(payload) {
     // Restore last known status from last incident
     const lastInc = (incidents[site.id] || []).at(-1);
     if (lastInc) {
-      site.status    = lastInc.status;
-      site.lastCheck = lastInc.ts;
+      site.status           = lastInc.status;
+      site.lastCheck        = lastInc.ts;
+      site._lastLoggedStatus = lastInc.status; // ← prevent false alert on first check after reload
     }
   });
 
@@ -631,8 +632,9 @@ function openLogPanel(siteId) {
   panel.dataset.siteId = siteId;
   document.getElementById('logSiteName').textContent = site.name;
 
+  // Always reset filter to 30 days on open
   const filterEl = document.getElementById('logDateFilter');
-  if (filterEl && !filterEl.dataset.set) { filterEl.value = '30'; filterEl.dataset.set = '1'; }
+  if (filterEl) filterEl.value = '30';
 
   panel.classList.add('open');
   document.getElementById('logOverlay').classList.add('active');
@@ -643,30 +645,56 @@ function renderLogContent(siteId) {
   const content  = document.getElementById('logContent');
   const filterEl = document.getElementById('logDateFilter');
   const days     = filterEl ? parseInt(filterEl.value) : 30;
-  const fromTs   = days === 0 ? 0 : Date.now() - days * 86400000;
+  // days=0 means "All time" — no date filter
+  const fromTs   = (days === 0) ? 0 : Date.now() - days * 24 * 60 * 60 * 1000;
 
-  const all     = (incidents[siteId] || []).slice().reverse();
-  const entries = days === 0 ? all : all.filter(e => e.ts >= fromTs);
+  const all     = (incidents[siteId] || []).slice().reverse(); // newest first
+  const entries = (days === 0) ? all : all.filter(e => e.ts >= fromTs);
+
+  const totalAll   = all.length;
+  const totalDown  = all.filter(e => e.status === 'down').length;
+  const storageNote = useGist
+    ? `<small style="color:var(--up)">☁ Data from GitHub Gist</small>`
+    : `<small style="color:var(--warn)">⚡ Browser localStorage only</small>`;
 
   if (entries.length === 0) {
-    const mode = useGist ? '☁ Stored in GitHub Gist' : '⚡ Local storage only';
     content.innerHTML = `
       <div class="log-empty">
         <svg viewBox="0 0 64 64" fill="none"><circle cx="32" cy="32" r="28" stroke="currentColor" stroke-width="2"/><path d="M22 32h20M32 22v20" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity="0.4"/></svg>
-        <p>No incidents in this period.<br/><small>${mode}</small></p>
+        <p>No incidents in this time range.</p>
+        ${totalAll > 0 ? `<p style="margin-top:8px;font-size:12px;color:var(--text-muted)">${totalAll} total event${totalAll>1?'s':''} · ${totalDown} outage${totalDown!==1?'s':''} · try "All time"</p>` : ''}
+        <p style="margin-top:8px">${storageNote}</p>
       </div>`;
     return;
   }
 
+  // Stats bar at top
+  const firstTs  = entries[entries.length - 1]?.ts;
+  const lastTs   = entries[0]?.ts;
+  const downCount = entries.filter(e => e.status === 'down').length;
+  const upCount   = entries.filter(e => e.status === 'up').length;
+
+  const statsBar = `
+    <div class="log-stats-bar">
+      <span class="log-stat"><span class="log-stat-num down">${downCount}</span> outage${downCount!==1?'s':''}</span>
+      <span class="log-stat"><span class="log-stat-num up">${upCount}</span> recover${upCount!==1?'ies':'y'}</span>
+      <span class="log-stat-sep">·</span>
+      <span class="log-stat muted">${entries.length} events</span>
+      <span class="log-stat-sep">·</span>
+      ${storageNote}
+    </div>`;
+
   // Group by date
   const grouped = {};
   entries.forEach(e => {
-    const day = new Date(e.ts).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+    const day = new Date(e.ts).toLocaleDateString([], {
+      weekday: 'short', month: 'short', day: 'numeric', year: 'numeric'
+    });
     if (!grouped[day]) grouped[day] = [];
     grouped[day].push(e);
   });
 
-  content.innerHTML = Object.entries(grouped).map(([day, dayEntries]) => `
+  content.innerHTML = statsBar + Object.entries(grouped).map(([day, dayEntries]) => `
     <div class="log-date-group">
       <div class="log-date-label">${day}</div>
       ${dayEntries.map(entry => `

@@ -999,22 +999,103 @@ body {
 }
 
 /* ── RESPONSIVE ────────────────────────────── */
+@media (max-width: 900px) {
+  .sites-grid { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+}
+
 @media (max-width: 768px) {
-  .header-inner { padding: 0 16px; }
+  /* Header */
+  .header-inner {
+    padding: 0 12px;
+    height: auto;
+    min-height: 56px;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+  .logo { flex: 1; }
+  .logo-text { font-size: 17px; }
+  .header-actions { gap: 6px; flex-wrap: wrap; }
   .refresh-info { display: none; }
-  .summary-inner { padding: 0 16px; overflow-x: auto; gap: 0; }
-  .summary-stat { padding: 0 14px; }
-  .summary-num { font-size: 18px; }
-  .main { padding: 20px 16px 80px; }
-  .sites-grid { grid-template-columns: 1fr; }
+  .storage-indicator { display: none; }
+
+  /* Summary bar — horizontal scroll */
+  .summary-bar { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .summary-inner {
+    padding: 0 12px;
+    height: auto;
+    min-height: 52px;
+    gap: 0;
+    width: max-content;
+    min-width: 100%;
+  }
+  .summary-stat { padding: 0 12px; }
+  .summary-num { font-size: 17px; }
+  .summary-label { font-size: 10px; }
+  .last-checked { font-size: 11px; padding-left: 12px; }
+
+  /* Main */
+  .main { padding: 16px 12px 60px; }
+
+  /* Grid — single column */
+  .sites-grid {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+
+  /* Cards */
+  .site-card { padding: 16px; }
+  .card-name { font-size: 14px; }
+  .metrics-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .metric-value { font-size: 18px; }
+
+  /* Card footer — stack vertically */
+  .card-footer {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .footer-right { width: 100%; justify-content: flex-end; }
+
+  /* Log panel — full screen */
   .log-panel { width: 100vw; }
-  .metrics-grid { grid-template-columns: 1fr 1fr; }
+  .log-panel-title { font-size: 13px; }
+
+  /* Modals */
+  .modal { width: calc(100vw - 24px); border-radius: 14px; }
+  .modal-body { padding: 16px; gap: 12px; }
+  .modal-header { padding: 16px 16px 0; }
+  .modal-footer { padding: 0 16px 16px; }
+
+  /* Webhook toggle group */
+  .toggle-group { grid-template-columns: 1fr; }
+  .toggle-card { padding: 10px 12px; }
 }
 
 @media (max-width: 480px) {
-  .logo-text { font-size: 17px; }
-  .btn span { display: none; }
-  .header-actions { gap: 8px; }
+  /* Buttons — icon only on very small screens */
+  .btn { padding: 7px 12px; font-size: 12px; }
+  #addSiteBtn .btn-label { display: none; }
+
+  /* Summary — tighter */
+  .summary-stat { padding: 0 10px; }
+  .summary-num { font-size: 15px; }
+  .summary-divider { height: 20px; }
+
+  /* Cards */
+  .site-favicon { width: 30px; height: 30px; }
+  .icon-btn { width: 28px; height: 28px; }
+  .metric-value { font-size: 16px; }
+
+  /* Toast */
+  .toast-container { bottom: 12px; right: 12px; left: 12px; }
+  .toast { max-width: 100%; }
+
+  /* Log panel header wraps */
+  .log-panel-header { flex-wrap: wrap; gap: 8px; }
+  .log-panel-controls { width: 100%; justify-content: space-between; }
+  .log-filter-select { flex: 1; }
 }
 
 /* ── SPINNING REFRESH ──────────────────────── */
@@ -1308,4 +1389,45 @@ body {
 .incident-count {
   color: var(--down);
   font-size: 11px;
+}
+
+/* ── LOG STATS BAR ──────────────────────────── */
+.log-stats-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--bg-card2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+  font-size: 12px;
+}
+
+.log-stat {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-muted);
+}
+
+.log-stat-num {
+  font-family: var(--mono);
+  font-weight: 700;
+  font-size: 14px;
+}
+.log-stat-num.down { color: var(--down); }
+.log-stat-num.up   { color: var(--up); }
+
+.log-stat-sep {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.log-stat.muted { color: var(--text-dim); }
+
+/* ── MOBILE: hide text labels on small buttons ── */
+@media (max-width: 480px) {
+  #addSiteBtn svg + * { display: none; }
 }
