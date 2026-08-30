@@ -7,13 +7,15 @@
 'use strict';
 
 const SPARK_HISTORY = 20;
-const REFRESH_MS    = 60000; // reload Gist data every 60s
+const REFRESH_MS    = 30000; // reload Gist every 30s — matches server check interval
 
-let sites     = [];
-let incidents = {};
-let checks    = {};
-let useGist   = false;
+let sites         = [];
+let incidents     = {};
+let checks        = {};
+let useGist       = false;
 let refreshTimer;
+let countdown     = 30;
+let countdownTimer;
 
 // ── INIT ─────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
@@ -28,12 +30,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   bindEvents();
   updateStorageIndicator();
 
-  // Auto-refresh from Gist every 60s to show latest server check results
-  refreshTimer = setInterval(async () => {
-    await loadData();
-    renderAll();
-    document.getElementById('lastCheckedTime').textContent = formatTime(Date.now());
-  }, REFRESH_MS);
+  // Start 30s countdown + auto-refresh
+  startCountdown();
 });
 
 // ── DATA LOAD ─────────────────────────────────
@@ -148,7 +146,32 @@ function hydrateFromPayload(payload) {
   }
 }
 
-// ── SITE MANAGEMENT ──────────────────────────
+// ── COUNTDOWN ────────────────────────────────
+function startCountdown() {
+  if (countdownTimer) clearInterval(countdownTimer);
+  if (refreshTimer)   clearInterval(refreshTimer);
+
+  countdown = 30;
+  updateCountdownEl();
+
+  countdownTimer = setInterval(() => {
+    countdown--;
+    if (countdown <= 0) {
+      countdown = 30;
+      // Auto-refresh data from Gist
+      loadData().then(() => {
+        renderAll();
+        document.getElementById('lastCheckedTime').textContent = formatTime(Date.now());
+      });
+    }
+    updateCountdownEl();
+  }, 1000);
+}
+
+function updateCountdownEl() {
+  const el = document.getElementById('countdown');
+  if (el) el.textContent = countdown + 's';
+}
 async function addSite(name, url, interval = 60, webhookUrl = '', alertMode = 'offline') {
   const id   = 'site_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
   const site = {
@@ -554,8 +577,22 @@ async function sendTestDiscord(webhookUrl, siteName) {
 function bindEvents() {
   document.getElementById('addSiteBtn').addEventListener('click', openAddModal);
   document.getElementById('checkNowBtn').addEventListener('click', async () => {
-    showToast('Refreshing from server…', 'info', '🔄');
-    await loadData(); renderAll();
+    const btn  = document.getElementById('checkNowBtn');
+    const icon = btn?.querySelector('svg');
+    if (icon) icon.classList.add('spinning');
+    btn?.setAttribute('disabled', '');
+
+    await loadData();
+    renderAll();
+    document.getElementById('lastCheckedTime').textContent = formatTime(Date.now());
+    showToast('Data refreshed from server', 'info', '🔄');
+
+    // Reset countdown
+    countdown = 30;
+    updateCountdownEl();
+
+    if (icon) icon.classList.remove('spinning');
+    btn?.removeAttribute('disabled');
   });
   document.getElementById('modalClose').addEventListener('click', closeAddModal);
   document.getElementById('modalCancelBtn').addEventListener('click', closeAddModal);

@@ -98,7 +98,8 @@ const handler = async () => {
   return { statusCode: 200, body: log.join(', ') };
 };
 
-// Export as scheduled function — runs every 1 minute
+// Export as scheduled function — runs every 1 minute (Netlify free tier minimum)
+// The UI polls every 30s so users always see fresh data within 30s of a check
 module.exports.handler = schedule('* * * * *', handler);
 
 // ── SITE CHECK ────────────────────────────────

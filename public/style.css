@@ -146,7 +146,7 @@ body { font-family: var(--font); background: var(--bg); color: var(--text);
 .site-card {
   background: var(--bg-card); border: 1px solid var(--border);
   border-radius: var(--r); padding: 20px;
-  position: relative; overflow: hidden;
+  position: relative; overflow: visible;
   transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease;
 }
 .site-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,.4); border-color:rgba(255,255,255,.12); }
@@ -221,15 +221,27 @@ body { font-family: var(--font); background: var(--bg); color: var(--text);
 .uptime-bar-fill.warn { background:linear-gradient(90deg,var(--warn),#fcd34d); }
 
 /* ── SPARKLINE ───────────────────────────── */
-.sparkline-section { margin-bottom:14px; }
+.sparkline-section { margin-bottom: 14px; overflow: visible; }
 .sparkline-label { font-size:10px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.8px; font-weight:500; margin-bottom:5px; }
-.sparkline-wrap { height:38px; display:flex; align-items:flex-end; gap:2px; }
+.sparkline-wrap { height:38px; display:flex; align-items:flex-end; gap:2px; overflow:visible; position:relative; }
 .spark-bar { flex:1; border-radius:2px 2px 0 0; min-height:3px; max-height:100%; position:relative; cursor:pointer; transition:height .3s; }
 .spark-bar:hover::after {
-  content: attr(data-tip); position:absolute; bottom:calc(100% + 4px); left:50%;
-  transform:translateX(-50%); background:var(--bg-card2); border:1px solid var(--border);
-  color:var(--text); font-size:10px; font-family:var(--mono); padding:2px 5px;
-  border-radius:4px; white-space:nowrap; pointer-events:none; z-index:10;
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: #1e2a3a;
+  border: 1px solid rgba(255,255,255,0.15);
+  color: var(--text);
+  font-size: 10px;
+  font-family: var(--mono);
+  padding: 3px 7px;
+  border-radius: 5px;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 9999;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.5);
 }
 .spark-bar.ok       { background:var(--up); }
 .spark-bar.slow     { background:var(--warn); }
