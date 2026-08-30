@@ -9,6 +9,10 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <!-- Supabase JS client (loaded from CDN, no npm needed) -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <!-- Your Supabase config — edit this file with your project URL + anon key -->
+  <script src="config.js"></script>
 </head>
 <body>
   <!-- Header -->
@@ -41,6 +45,7 @@
           <svg viewBox="0 0 20 20" fill="none"><path d="M10 4v12M4 10h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
           Add Site
         </button>
+        <span class="storage-indicator local" id="storageIndicator" title="Storage mode">⚡ Local</span>
       </div>
     </div>
   </header>
@@ -81,6 +86,16 @@
 
   <!-- Main -->
   <main class="main">
+    <!-- Supabase Setup Banner (hidden when configured) -->
+    <div class="setup-banner" id="setupBanner">
+      <div class="setup-banner-icon">☁️</div>
+      <div class="setup-banner-text">
+        <strong>Enable persistent cloud storage</strong> — currently using browser localStorage (data clears with cache).
+        Set up <a href="https://supabase.com" target="_blank" rel="noopener">free Supabase</a> in 5 minutes to store 1 year of history.
+        <a href="https://github.com/subhamproo/uptracker#supabase-setup" target="_blank" rel="noopener">Setup guide →</a>
+      </div>
+      <button class="setup-banner-close" onclick="document.getElementById('setupBanner').style.display='none'" title="Dismiss">✕</button>
+    </div>
     <!-- Sites Grid -->
     <div class="sites-grid" id="sitesGrid">
       <!-- Site cards rendered by JS -->
@@ -106,9 +121,19 @@
         <svg viewBox="0 0 20 20" fill="none"><path d="M10 2a8 8 0 1 0 0 16A8 8 0 0 0 10 2Z" stroke="currentColor" stroke-width="1.5"/><path d="M10 6v4l2.5 2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
         Incident Log — <span id="logSiteName"></span>
       </div>
-      <button class="log-close" id="logClose">
-        <svg viewBox="0 0 20 20" fill="none"><path d="M5 5l10 10M15 5L5 15" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-      </button>
+      <div class="log-panel-controls">
+        <select class="log-filter-select" id="logDateFilter" title="History range">
+          <option value="1">Last 24h</option>
+          <option value="7">Last 7 days</option>
+          <option value="30" selected>Last 30 days</option>
+          <option value="90">Last 90 days</option>
+          <option value="365">Last 1 year</option>
+          <option value="0">All time</option>
+        </select>
+        <button class="log-close" id="logClose">
+          <svg viewBox="0 0 20 20" fill="none"><path d="M5 5l10 10M15 5L5 15" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        </button>
+      </div>
     </div>
     <div class="log-content" id="logContent">
       <!-- Log entries rendered by JS -->
@@ -235,5 +260,17 @@
   <div class="toast-container" id="toastContainer"></div>
 
   <script src="app.js"></script>
+  <script>
+    // Hide setup banner once Supabase is confirmed active
+    document.addEventListener('DOMContentLoaded', () => {
+      setTimeout(() => {
+        if (window.useSupabase || (window.UPTRACKER_CONFIG &&
+            window.UPTRACKER_CONFIG.SUPABASE_URL !== 'YOUR_SUPABASE_URL')) {
+          const b = document.getElementById('setupBanner');
+          if (b) b.style.display = 'none';
+        }
+      }, 800);
+    });
+  </script>
 </body>
 </html>

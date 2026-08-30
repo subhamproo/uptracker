@@ -17,7 +17,34 @@ A clean, minimal, realtime website uptime/downtime tracker. No backend required.
 - **Mobile responsive** — works on all screen sizes
 - **Zero dependencies** — pure HTML/CSS/JS, no npm, no build tools
 
-## Deploy (Free Hosting)
+## Supabase Setup (Persistent Storage — Free)
+
+By default Uptracker stores data in `localStorage` (browser only). To get **1-year persistent history** that survives cache clears and works across devices, set up Supabase in 5 minutes:
+
+**1. Create a free Supabase project**
+- Go to [supabase.com](https://supabase.com) → New Project (free tier, no credit card)
+
+**2. Run the schema**
+- Dashboard → SQL Editor → paste contents of `supabase_schema.sql` → Run
+
+**3. Get your API keys**
+- Dashboard → Settings → API
+- Copy: **Project URL** and **anon public key**
+
+**4. Add to config.js**
+```js
+// public/config.js
+window.UPTRACKER_CONFIG = {
+  SUPABASE_URL: 'https://your-project.supabase.co',
+  SUPABASE_ANON_KEY: 'your-anon-key-here',
+};
+```
+
+**5. Redeploy** — the ☁ Cloud badge will appear on all cards.
+
+The anon key is safe to expose — Supabase Row Level Security (RLS) policies are already set up in the schema.
+
+---
 
 ### GitHub Pages
 1. Push to a GitHub repo
