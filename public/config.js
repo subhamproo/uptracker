@@ -7,7 +7,7 @@
 window.UPTRACKER_CONFIG = {
   // Your GitHub Personal Access Token (gist scope only)
   // DO NOT commit your real token — paste it here locally only
-  GITHUB_TOKEN: 'YOUR_GITHUB_TOKEN',
+  GITHUB_TOKEN: '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',
 
   // The Gist ID created for this project
   GIST_ID: '6460a6dfda90fbea4aae70f0ef973bfb',
