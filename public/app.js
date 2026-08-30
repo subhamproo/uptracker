@@ -110,9 +110,20 @@ function buildPayload() {
 }
 
 function siteToJSON(s) {
-  return { id: s.id, name: s.name, url: s.url, interval: s.interval || 60,
-           webhookUrl: s.webhookUrl || '', alertMode: s.alertMode || 'offline',
-           addedAt: s.addedAt };
+  return {
+    id:         s.id,
+    name:       s.name,
+    url:        s.url,
+    interval:   s.interval || 30,
+    webhookUrl: s.webhookUrl || '',
+    alertMode:  s.alertMode  || 'offline',
+    addedAt:    s.addedAt,
+    // Preserve server-written fields if they exist
+    lastStatus:  s.lastStatus  || undefined,
+    lastMs:      s.lastMs      || undefined,
+    lastCode:    s.lastCode    || undefined,
+    lastChecked: s.lastChecked || undefined,
+  };
 }
 
 // ── HYDRATE ──────────────────────────────────
@@ -172,7 +183,7 @@ function updateCountdownEl() {
   const el = document.getElementById('countdown');
   if (el) el.textContent = countdown + 's';
 }
-async function addSite(name, url, interval = 60, webhookUrl = '', alertMode = 'offline') {
+async function addSite(name, url, interval = 30, webhookUrl = '', alertMode = 'offline') {
   const id   = 'site_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
   const site = {
     id, name: name.trim(), url: normalizeUrl(url.trim()), interval,
@@ -225,7 +236,7 @@ function renderAll() {
     empty.style.display = 'block';
     // Seed ROI if empty
     if (useGist) {
-      addSite('ROI Profit Academy', 'https://roiprofitacademy.in', 60,
+      addSite('ROI Profit Academy', 'https://roiprofitacademy.in', 30,
         'https://discord.com/api/webhooks/1465360998411272344/pFe4scsMHqiJNv6WqMmkzIJfrBYxrdr0UkNcKn5i1yqT1Q3cFiOEKI3NAGUzpaZUBXur',
         'both');
     }
