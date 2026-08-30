@@ -1,4 +1,4 @@
-# Never commit the real config (contains GitHub token)
+# Generated at build time by build.js — never commit
 public/config.js
 
 # OS
