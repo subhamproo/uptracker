@@ -1,19 +1,17 @@
 /* =============================================
-   UPTRACKER — Supabase Configuration
-   
-   HOW TO SET UP (5 minutes, free):
-   1. Go to https://supabase.com → New project (free)
-   2. Go to SQL Editor → paste contents of supabase_schema.sql → Run
-   3. Go to Settings → API → copy Project URL and anon public key
-   4. Paste them below and save
+   UPTRACKER — GitHub Gist Storage Config
+   Data is stored as JSON in a private GitHub Gist.
+   Survives cache clears, works across all devices.
    ============================================= */
 
 window.UPTRACKER_CONFIG = {
-  // Your Supabase project URL
-  // e.g. https://xyzxyzxyz.supabase.co
-  SUPABASE_URL: 'YOUR_SUPABASE_URL',
+  // Your GitHub Personal Access Token (gist scope only)
+  // DO NOT commit your real token — paste it here locally only
+  GITHUB_TOKEN: 'YOUR_GITHUB_TOKEN',
 
-  // Your Supabase anon/public key (safe to expose — RLS protects data)
-  // Found at: Supabase Dashboard → Settings → API → anon public
-  SUPABASE_ANON_KEY: 'YOUR_SUPABASE_ANON_KEY',
+  // The Gist ID created for this project
+  GIST_ID: '6460a6dfda90fbea4aae70f0ef973bfb',
+
+  // Filename inside the Gist
+  GIST_FILE: 'uptracker_data.json',
 };

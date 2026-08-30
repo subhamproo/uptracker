@@ -1,69 +1,213 @@
 /* =============================================
-   UPTRACKER — Core Engine v3
+   UPTRACKER — Core Engine v4
    Realtime website downtime monitor
-   Backend: Supabase (persistent, 1-year history)
-   Fallback: localStorage (offline / unconfigured)
+   Storage: GitHub Gist (persistent JSON, server-side)
+   Fallback: localStorage (if Gist not configured)
    ============================================= */
 
 'use strict';
 
-// ── CONSTANTS ───────────────────────────────
-const STORAGE_KEY     = 'uptracker_sites_v3';
+// ── CONSTANTS ────────────────────────────────
+const LS_KEY          = 'uptracker_local_v4';
 const DEFAULT_TIMEOUT = 10000;
 const SPARK_HISTORY   = 20;
+const MAX_INCIDENTS   = 5000;  // per site, ~1 year at 10/day
+const MAX_CHECKS      = 2000;  // per site sparkline + stats
 const PROXY_URLS = [
   'https://api.allorigins.win/get?url=',
   'https://corsproxy.io/?',
   'https://cors-anywhere.herokuapp.com/',
 ];
 
-// ── STATE ────────────────────────────────────
+// ── STATE ─────────────────────────────────────
 let sites         = [];
+let incidents     = {};   // { siteId: [{ts,status,ms,code,event}] }
+let checks        = {};   // { siteId: [{ts,status,ms}] } last N checks
 let timers        = {};
 let countdown     = 30;
 let countdownTimer;
-let sb            = null;   // Supabase client
-let useSupabase   = false;
+let useGist       = false;
+let gistSaveTimer = null; // debounce writes
 
-// ── SUPABASE INIT ─────────────────────────────
-function initSupabase() {
-  const cfg = window.UPTRACKER_CONFIG || {};
-  const url = cfg.SUPABASE_URL;
-  const key = cfg.SUPABASE_ANON_KEY;
+// ── GIST STORAGE LAYER ────────────────────────
+const GIST_API = 'https://api.github.com/gists/';
 
-  if (!url || !key || url === 'YOUR_SUPABASE_URL' || key === 'YOUR_SUPABASE_ANON_KEY') {
-    console.info('Uptracker: Supabase not configured — using localStorage fallback');
-    useSupabase = false;
-    return;
-  }
+function gistHeaders() {
+  const { GITHUB_TOKEN } = window.UPTRACKER_CONFIG || {};
+  return {
+    'Authorization': `token ${GITHUB_TOKEN}`,
+    'Content-Type':  'application/json',
+    'Accept':        'application/vnd.github.v3+json',
+  };
+}
 
+async function gistLoad() {
+  const { GIST_ID, GIST_FILE } = window.UPTRACKER_CONFIG || {};
   try {
-    sb = window.supabase.createClient(url, key);
-    useSupabase = true;
-    console.info('Uptracker: Supabase connected ✅');
+    const res  = await fetch(GIST_API + GIST_ID, { headers: gistHeaders(), cache: 'no-store' });
+    if (!res.ok) throw new Error(`Gist load failed: ${res.status}`);
+    const data = await res.json();
+    const raw  = data.files?.[GIST_FILE]?.content;
+    if (!raw) return null;
+    return JSON.parse(raw);
   } catch(e) {
-    console.warn('Uptracker: Supabase init failed, using localStorage', e);
-    useSupabase = false;
+    console.warn('Gist load error:', e.message);
+    return null;
+  }
+}
+
+// Debounced save — batches rapid writes into one API call per 3s
+function gistSave(immediate = false) {
+  if (!useGist) { lsSave(); return; }
+  if (gistSaveTimer) clearTimeout(gistSaveTimer);
+  const delay = immediate ? 0 : 3000;
+  gistSaveTimer = setTimeout(() => _doGistSave(), delay);
+}
+
+async function _doGistSave() {
+  const { GIST_ID, GIST_FILE } = window.UPTRACKER_CONFIG || {};
+  const payload = buildGistPayload();
+  try {
+    const res = await fetch(GIST_API + GIST_ID, {
+      method:  'PATCH',
+      headers: gistHeaders(),
+      body: JSON.stringify({
+        files: { [GIST_FILE]: { content: JSON.stringify(payload, null, 2) } },
+      }),
+    });
+    if (!res.ok) throw new Error(`Gist save failed: ${res.status}`);
+  } catch(e) {
+    console.warn('Gist save error:', e.message);
+  }
+  lsSave(); // always mirror to localStorage
+}
+
+function buildGistPayload() {
+  // Trim to keep Gist size manageable
+  const trimmedIncidents = {};
+  const trimmedChecks    = {};
+  for (const id in incidents) {
+    trimmedIncidents[id] = (incidents[id] || []).slice(-MAX_INCIDENTS);
+  }
+  for (const id in checks) {
+    trimmedChecks[id] = (checks[id] || []).slice(-MAX_CHECKS);
+  }
+  return {
+    version:   4,
+    savedAt:   new Date().toISOString(),
+    sites:     sites.map(siteToJSON),
+    incidents: trimmedIncidents,
+    checks:    trimmedChecks,
+  };
+}
+
+function siteToJSON(s) {
+  return {
+    id:         s.id,
+    name:       s.name,
+    url:        s.url,
+    interval:   s.interval,
+    webhookUrl: s.webhookUrl || '',
+    alertMode:  s.alertMode  || 'offline',
+    addedAt:    s.addedAt,
+  };
+}
+
+// ── LOCALSTORAGE MIRROR ───────────────────────
+function lsSave() {
+  try {
+    localStorage.setItem(LS_KEY, JSON.stringify(buildGistPayload()));
+  } catch(e) {}
+}
+
+function lsLoad() {
+  try {
+    const raw = localStorage.getItem(LS_KEY)
+             || localStorage.getItem('uptracker_local_v3') // migrate
+             || localStorage.getItem('uptracker_sites_v2'); // migrate older
+    if (!raw) return null;
+    const d = JSON.parse(raw);
+    // Handle old format (array of sites directly)
+    if (Array.isArray(d)) return { sites: d, incidents: {}, checks: {}, version: 1 };
+    return d;
+  } catch(e) { return null; }
+}
+
+// ── HYDRATE STATE FROM PAYLOAD ────────────────
+function hydrateFromPayload(payload) {
+  if (!payload) return;
+
+  const rawSites = payload.sites || [];
+  sites = rawSites.map(s => ({
+    ...s,
+    // runtime state — will be populated on first check
+    status:     'checking',
+    statusCode: null,
+    responseMs: null,
+    uptimePct:  null,
+    lastCheck:  null,
+    history:    [],
+  }));
+
+  incidents = payload.incidents || {};
+  checks    = payload.checks    || {};
+
+  // Rebuild in-memory sparkline history from stored checks
+  sites.forEach(site => {
+    const siteChecks = (checks[site.id] || []);
+    site.history     = siteChecks.slice(-SPARK_HISTORY);
+    site.uptimePct   = calcUptimePct(site.history);
+
+    // Migrate: if no webhookUrl/alertMode
+    if (!('webhookUrl' in site)) site.webhookUrl = '';
+    if (!('alertMode'  in site)) site.alertMode  = 'offline';
+
+    // Restore last known status from last incident
+    const lastInc = (incidents[site.id] || []).at(-1);
+    if (lastInc) {
+      site.status    = lastInc.status;
+      site.lastCheck = lastInc.ts;
+    }
+  });
+
+  // Always apply ROI webhook
+  applyRoiWebhook();
+}
+
+function applyRoiWebhook() {
+  const roi = sites.find(s => s.url && s.url.includes('roiprofitacademy.in'));
+  if (roi && !roi.webhookUrl) {
+    roi.webhookUrl = 'https://discord.com/api/webhooks/1465360998411272344/pFe4scsMHqiJNv6WqMmkzIJfrBYxrdr0UkNcKn5i1yqT1Q3cFiOEKI3NAGUzpaZUBXur';
+    roi.alertMode  = 'both';
   }
 }
 
 // ── INIT ─────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
-  initSupabase();
+  const cfg = window.UPTRACKER_CONFIG || {};
+  useGist   = !!(cfg.GITHUB_TOKEN && cfg.GIST_ID
+              && cfg.GITHUB_TOKEN !== 'YOUR_GITHUB_TOKEN');
+
   showLoadingState(true);
 
-  if (useSupabase) {
-    await loadSitesFromDB();
+  let payload = null;
+  if (useGist) {
+    payload = await gistLoad();
+    if (!payload) {
+      // Gist empty/new — try migrate from localStorage
+      payload = lsLoad();
+    }
   } else {
-    loadSitesFromStorage();
+    payload = lsLoad();
   }
 
+  hydrateFromPayload(payload);
   renderAll();
   bindEvents();
   startGlobalCountdown();
   showLoadingState(false);
+  updateStorageIndicator();
 
-  // Seed ROI Profit Academy if no sites exist
   if (sites.length === 0) {
     await addSite(
       'ROI Profit Academy',
@@ -73,7 +217,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       'both'
     );
   } else {
-    // Start monitoring all loaded sites
     sites.forEach(s => { scheduleChecks(s); checkSite(s); });
   }
 });
@@ -85,221 +228,31 @@ function showLoadingState(on) {
     grid.innerHTML = `
       <div class="loading-state">
         <div class="loading-spinner"></div>
-        <span>Loading sites…</span>
+        <span>${useGist ? 'Loading from GitHub Gist…' : 'Loading…'}</span>
       </div>`;
   }
 }
 
-// ── SUPABASE DB LAYER ─────────────────────────
-
-async function loadSitesFromDB() {
-  try {
-    const { data, error } = await sb.from('sites').select('*').order('added_at', { ascending: true });
-    if (error) throw error;
-    sites = (data || []).map(dbRowToSite);
-    // Migrate webhook config for ROI if missing
-    migrateRoiWebhook();
-  } catch(e) {
-    console.warn('DB load failed, falling back to localStorage', e);
-    loadSitesFromStorage();
-  }
-}
-
-async function dbSaveSite(site) {
-  if (!useSupabase) { saveToStorage(); return; }
-  try {
-    await sb.from('sites').upsert({
-      id:          site.id,
-      name:        site.name,
-      url:         site.url,
-      interval:    site.interval,
-      webhook_url: site.webhookUrl || '',
-      alert_mode:  site.alertMode  || 'offline',
-      updated_at:  new Date().toISOString(),
-    });
-  } catch(e) {
-    console.warn('DB save site failed', e);
-  }
-  saveToStorage(); // always mirror to localStorage as backup
-}
-
-async function dbDeleteSite(siteId) {
-  if (!useSupabase) { saveToStorage(); return; }
-  try {
-    await sb.from('sites').delete().eq('id', siteId);
-  } catch(e) {
-    console.warn('DB delete site failed', e);
-  }
-  saveToStorage();
-}
-
-async function dbSaveCheck(site, status, ms, code) {
-  if (!useSupabase) return;
-  try {
-    await sb.from('checks').insert({
-      site_id:     site.id,
-      status:      status,
-      response_ms: ms,
-      status_code: code,
-      checked_at:  new Date().toISOString(),
-    });
-  } catch(e) {
-    // Silent — checks are high-frequency, don't spam errors
-  }
-}
-
-async function dbSaveIncident(site, status, ms, code, event) {
-  if (!useSupabase) return;
-  try {
-    await sb.from('incidents').insert({
-      site_id:     site.id,
-      status:      status,
-      response_ms: ms,
-      status_code: code,
-      event:       event,
-      occurred_at: new Date().toISOString(),
-    });
-  } catch(e) {
-    console.warn('DB save incident failed', e);
-  }
-}
-
-async function dbLoadIncidents(siteId, fromDate = null) {
-  if (!useSupabase) {
-    // Return from localStorage incidents
-    const stored = JSON.parse(localStorage.getItem('uptracker_incidents_v3') || '{}');
-    return (stored[siteId] || []).filter(e => !fromDate || e.ts >= fromDate);
-  }
-  try {
-    let query = sb
-      .from('incidents')
-      .select('*')
-      .eq('site_id', siteId)
-      .order('occurred_at', { ascending: false });
-
-    if (fromDate) {
-      query = query.gte('occurred_at', new Date(fromDate).toISOString());
-    }
-
-    const { data, error } = await query;
-    if (error) throw error;
-    return (data || []).map(r => ({
-      ts:     new Date(r.occurred_at).getTime(),
-      status: r.status,
-      ms:     r.response_ms,
-      code:   r.status_code,
-      event:  r.event,
-    }));
-  } catch(e) {
-    console.warn('DB load incidents failed', e);
-    return [];
-  }
-}
-
-async function dbLoadChecksForSparkline(siteId) {
-  if (!useSupabase) return null;
-  try {
-    const { data, error } = await sb
-      .from('checks')
-      .select('status, response_ms, checked_at')
-      .eq('site_id', siteId)
-      .order('checked_at', { ascending: false })
-      .limit(SPARK_HISTORY);
-    if (error) throw error;
-    return (data || []).reverse().map(r => ({
-      status: r.status,
-      ms:     r.response_ms,
-      ts:     new Date(r.checked_at).getTime(),
-    }));
-  } catch(e) {
-    return null;
-  }
-}
-
-async function dbLoadUptimeStats(siteId, days = 30) {
-  if (!useSupabase) return null;
-  try {
-    const since = new Date(Date.now() - days * 86400000).toISOString();
-    const { data, error } = await sb
-      .from('checks')
-      .select('status')
-      .eq('site_id', siteId)
-      .gte('checked_at', since);
-    if (error) throw error;
-    if (!data || data.length === 0) return null;
-    const up = data.filter(r => r.status === 'up').length;
-    return Math.round((up / data.length) * 1000) / 10;
-  } catch(e) {
-    return null;
-  }
-}
-
-function dbRowToSite(row) {
-  return {
-    id:         row.id,
-    name:       row.name,
-    url:        row.url,
-    interval:   row.interval || 30,
-    webhookUrl: row.webhook_url || '',
-    alertMode:  row.alert_mode  || 'offline',
-    addedAt:    new Date(row.added_at).getTime(),
-    // runtime state (populated on first check)
-    status:     'checking',
-    statusCode: null,
-    responseMs: null,
-    uptimePct:  null,
-    lastCheck:  null,
-    history:    [],
-  };
-}
-
-// ── LOCALSTORAGE FALLBACK ─────────────────────
-function loadSitesFromStorage() {
-  try {
-    const s = localStorage.getItem(STORAGE_KEY);
-    const old = localStorage.getItem('uptracker_sites_v2'); // migrate from v2
-    const raw = s || old;
-    sites = raw ? JSON.parse(raw) : [];
-    sites.forEach(site => {
-      if (!('webhookUrl' in site)) site.webhookUrl = '';
-      if (!('alertMode'  in site)) site.alertMode  = 'offline';
-      if (!('history'    in site)) site.history     = [];
-    });
-    migrateRoiWebhook();
-  } catch(e) {
-    sites = [];
-  }
-}
-
-function saveToStorage() {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(sites));
-  } catch(e) {}
-}
-
-function saveIncidentToStorage(siteId, entry) {
-  try {
-    const key = 'uptracker_incidents_v3';
-    const all = JSON.parse(localStorage.getItem(key) || '{}');
-    if (!all[siteId]) all[siteId] = [];
-    all[siteId].push(entry);
-    // Keep last 500 per site
-    if (all[siteId].length > 500) all[siteId] = all[siteId].slice(-500);
-    localStorage.setItem(key, JSON.stringify(all));
-  } catch(e) {}
-}
-
-function migrateRoiWebhook() {
-  const roi = sites.find(s => s.url && s.url.includes('roiprofitacademy.in'));
-  if (roi && !roi.webhookUrl) {
-    roi.webhookUrl = 'https://discord.com/api/webhooks/1465360998411272344/pFe4scsMHqiJNv6WqMmkzIJfrBYxrdr0UkNcKn5i1yqT1Q3cFiOEKI3NAGUzpaZUBXur';
-    roi.alertMode  = 'both';
+function updateStorageIndicator() {
+  const el = document.getElementById('storageIndicator');
+  if (!el) return;
+  if (useGist) {
+    el.textContent = '☁ Cloud';
+    el.className   = 'storage-indicator cloud';
+    el.title       = 'Data stored in GitHub Gist — persistent across devices';
+    // Hide setup banner
+    const b = document.getElementById('setupBanner');
+    if (b) b.style.display = 'none';
+  } else {
+    el.textContent = '⚡ Local';
+    el.className   = 'storage-indicator local';
+    el.title       = 'Data in browser localStorage only — clears with cache. Add config.js to enable cloud.';
   }
 }
 
 // ── SITE MANAGEMENT ──────────────────────────
 async function addSite(name, url, interval = 30, webhookUrl = '', alertMode = 'offline') {
-  const id = 'site_' + Date.now() + '_' + Math.random().toString(36).slice(2,7);
+  const id   = 'site_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
   const site = {
     id,
     name:       name.trim(),
@@ -316,7 +269,9 @@ async function addSite(name, url, interval = 30, webhookUrl = '', alertMode = 'o
     alertMode:  alertMode  || 'offline',
   };
   sites.push(site);
-  await dbSaveSite(site);
+  incidents[id] = [];
+  checks[id]    = [];
+  gistSave();
   renderAll();
   scheduleChecks(site);
   checkSite(site);
@@ -327,15 +282,17 @@ async function updateSite(id, changes) {
   const site = sites.find(s => s.id === id);
   if (!site) return;
   Object.assign(site, changes);
-  await dbSaveSite(site);
+  gistSave();
   scheduleChecks(site);
   updateCardStatus(site);
 }
 
 async function removeSite(id) {
   if (timers[id]) { clearInterval(timers[id]); delete timers[id]; }
-  sites = sites.filter(s => s.id !== id);
-  await dbDeleteSite(id);
+  sites     = sites.filter(s => s.id !== id);
+  delete incidents[id];
+  delete checks[id];
+  gistSave(true);
   renderAll();
   showToast('Site removed', 'info', '🗑️');
 }
@@ -359,19 +316,16 @@ async function checkSite(site) {
   let success = false, ms = null, code = null;
 
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT);
+    const ctrl = new AbortController();
+    const tid  = setTimeout(() => ctrl.abort(), DEFAULT_TIMEOUT);
     try {
-      await fetch(site.url, {
-        method: 'HEAD', mode: 'no-cors',
-        signal: controller.signal, cache: 'no-store',
-      });
-      clearTimeout(timeout);
+      await fetch(site.url, { method: 'HEAD', mode: 'no-cors', signal: ctrl.signal, cache: 'no-store' });
+      clearTimeout(tid);
       ms = Math.round(performance.now() - start);
       success = true; code = 200;
-    } catch(fetchErr) {
-      clearTimeout(timeout);
-      if (fetchErr.name === 'AbortError') {
+    } catch(fe) {
+      clearTimeout(tid);
+      if (fe.name === 'AbortError') {
         success = false; ms = DEFAULT_TIMEOUT;
       } else {
         const r = await checkViaProxy(site.url, start);
@@ -382,47 +336,46 @@ async function checkSite(site) {
     success = false; ms = Math.round(performance.now() - start);
   }
 
-  const prevStatus = site.status;
-  site.status      = success ? 'up' : 'down';
-  site.responseMs  = ms;
-  site.statusCode  = code;
-  site.lastCheck   = Date.now();
+  const newStatus = success ? 'up' : 'down';
+  site.status     = newStatus;
+  site.responseMs = ms;
+  site.statusCode = code;
+  site.lastCheck  = Date.now();
 
-  // Push to in-memory sparkline history
-  site.history.push({ status: site.status, ms, ts: Date.now() });
-  if (site.history.length > SPARK_HISTORY) site.history.shift();
+  // Store check
+  if (!checks[site.id]) checks[site.id] = [];
+  checks[site.id].push({ ts: Date.now(), status: newStatus, ms });
+  if (checks[site.id].length > MAX_CHECKS) checks[site.id].shift();
+
+  // Rebuild sparkline from stored checks
+  site.history   = checks[site.id].slice(-SPARK_HISTORY);
   site.uptimePct = calcUptimePct(site.history);
 
-  // Save check to DB
-  dbSaveCheck(site, site.status, ms, code);
+  // Incident detection
+  const prevInc = (incidents[site.id] || []).at(-1);
+  const prevStatus = prevInc?.status;
 
-  // Detect status change → incident
-  const prevState = site._lastLoggedStatus;
-  if (prevState !== site.status) {
-    site._lastLoggedStatus = site.status;
-    const event = site.status === 'up' ? '✅ Site came back online' : '🔴 Site went down';
-    const entry = { ts: Date.now(), status: site.status, ms, code, event };
+  if (prevStatus !== newStatus) {
+    const event = newStatus === 'up' ? '✅ Site came back online' : '🔴 Site went down';
+    const entry = { ts: Date.now(), status: newStatus, ms, code, event };
 
-    // Save incident
-    dbSaveIncident(site, site.status, ms, code, event);
-    saveIncidentToStorage(site.id, entry);
+    if (!incidents[site.id]) incidents[site.id] = [];
+    incidents[site.id].push(entry);
+    if (incidents[site.id].length > MAX_INCIDENTS) incidents[site.id].shift();
 
     // Toast
-    if (site.status === 'down') {
-      showToast(`${site.name} is DOWN!`, 'down', '🔴');
-    } else if (prevState === 'down') {
-      showToast(`${site.name} is back online`, 'up', '✅');
-    }
+    if (newStatus === 'down') showToast(`${site.name} is DOWN!`, 'down', '🔴');
+    else if (prevStatus === 'down') showToast(`${site.name} is back online`, 'up', '✅');
 
     // Discord
     if (site.webhookUrl) {
-      const should = site.alertMode === 'both' ||
-        (site.alertMode === 'offline' && site.status === 'down');
-      if (should) sendDiscordAlert(site, site.status, ms, code);
+      const send = site.alertMode === 'both' ||
+        (site.alertMode === 'offline' && newStatus === 'down');
+      if (send) sendDiscordAlert(site, newStatus, ms, code);
     }
   }
 
-  saveToStorage();
+  gistSave(); // debounced — batches many checks into one write
   updateCardStatus(site);
   updateSummaryBar();
 }
@@ -430,11 +383,9 @@ async function checkSite(site) {
 async function checkViaProxy(url, start) {
   for (const proxy of PROXY_URLS) {
     try {
-      const controller = new AbortController();
-      setTimeout(() => controller.abort(), 8000);
-      const res = await fetch(proxy + encodeURIComponent(url), {
-        signal: controller.signal, cache: 'no-store',
-      });
+      const ctrl = new AbortController();
+      setTimeout(() => ctrl.abort(), 8000);
+      const res = await fetch(proxy + encodeURIComponent(url), { signal: ctrl.signal, cache: 'no-store' });
       if (res.ok) return { success: true, ms: Math.round(performance.now() - start), code: 200 };
     } catch(e) {}
   }
@@ -480,25 +431,27 @@ function buildCardHTML(site) {
   const responseClass = getResponseClass(site.responseMs);
   const uptimeClass   = getUptimeClass(site.uptimePct);
   const uptimeFill    = site.uptimePct !== null ? site.uptimePct : 0;
-  const uptimeFillClass = site.uptimePct < 90 ? (site.uptimePct < 70 ? 'low' : 'warn') : '';
+  const fillClass     = uptimeFill < 70 ? 'low' : uptimeFill < 90 ? 'warn' : '';
   const sparkBars     = buildSparkBars(site.history);
-  const faviconUrl    = getFaviconUrl(site.url);
   const domain        = getDomain(site.url);
   const statusLabel   = site.status === 'up' ? 'Online' : site.status === 'down' ? 'Offline' : 'Checking…';
   const sinceTxt      = site.lastCheck ? 'since ' + formatRelativeTime(site.lastCheck) : '';
   const checksTxt     = site.history.length
-    ? `${site.history.filter(h=>h.status==='up').length}/${site.history.length} checks`
+    ? `${site.history.filter(h => h.status === 'up').length}/${site.history.length} checks`
     : 'No checks yet';
-  const storageMode   = useSupabase
-    ? `<span class="storage-badge sb">☁ Cloud</span>`
-    : `<span class="storage-badge local">⚡ Local</span>`;
+  const storageBadge  = useGist
+    ? `<span class="storage-badge sb" title="Stored in GitHub Gist">☁ Cloud</span>`
+    : `<span class="storage-badge local" title="Browser only — configure Gist for persistence">⚡ Local</span>`;
+  const totalChecks   = (checks[site.id] || []).length;
+  const totalInc      = (incidents[site.id] || []).filter(i => i.status === 'down').length;
 
   return `
     <div class="site-card status-${site.status}" id="card-${site.id}" data-id="${site.id}">
       <div class="card-header">
         <div class="card-identity">
           <div class="site-favicon">
-            <img src="${faviconUrl}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='block'"/>
+            <img src="${getFaviconUrl(site.url)}" alt=""
+              onerror="this.style.display='none';this.nextElementSibling.style.display='block'"/>
             <span style="display:none;font-size:15px;">${getInitial(site.name)}</span>
           </div>
           <div class="card-title-wrap">
@@ -534,7 +487,7 @@ function buildCardHTML(site) {
         <div class="metric-box">
           <div class="metric-label">Uptime</div>
           <div class="metric-value ${uptimeClass}">${uptime}</div>
-          <div class="metric-sub">Last ${site.history.length} checks</div>
+          <div class="metric-sub">${totalChecks} total checks</div>
         </div>
       </div>
 
@@ -544,7 +497,7 @@ function buildCardHTML(site) {
           <span class="uptime-pct ${uptimeClass}">${uptime}</span>
         </div>
         <div class="uptime-bar-track">
-          <div class="uptime-bar-fill ${uptimeFillClass}" style="width:${uptimeFill}%"></div>
+          <div class="uptime-bar-fill ${fillClass}" style="width:${uptimeFill}%"></div>
         </div>
       </div>
 
@@ -555,8 +508,9 @@ function buildCardHTML(site) {
 
       <div class="card-footer">
         <div class="footer-meta">
-          ${storageMode}
+          ${storageBadge}
           ${checksTxt} · <span>Every ${site.interval}s</span>
+          ${totalInc > 0 ? `· <span class="incident-count">${totalInc} outage${totalInc>1?'s':''}</span>` : ''}
         </div>
         <div class="footer-right">
           ${site.webhookUrl ? `<span class="discord-badge" title="Discord: ${site.alertMode === 'both' ? 'Online &amp; Offline' : 'Offline only'}">
@@ -569,8 +523,7 @@ function buildCardHTML(site) {
           </button>
         </div>
       </div>
-    </div>
-  `;
+    </div>`;
 }
 
 function buildSparkBars(history) {
@@ -595,6 +548,7 @@ function updateCardStatus(site) {
   if (!card) { renderAll(); return; }
 
   card.className = `site-card status-${site.status}`;
+
   const dot   = card.querySelector('.status-dot');
   const txt   = card.querySelector('.status-text');
   const since = card.querySelector('.status-since');
@@ -605,10 +559,17 @@ function updateCardStatus(site) {
 
   const mv = card.querySelectorAll('.metric-value');
   if (mv[0]) { mv[0].textContent = site.responseMs !== null ? site.responseMs + 'ms' : '—'; mv[0].className = `metric-value ${getResponseClass(site.responseMs)}`; }
-  if (mv[1]) { const u = site.uptimePct !== null ? site.uptimePct.toFixed(1) + '%' : '—'; mv[1].textContent = u; mv[1].className = `metric-value ${getUptimeClass(site.uptimePct)}`; }
+  if (mv[1]) { mv[1].textContent = site.uptimePct  !== null ? site.uptimePct.toFixed(1) + '%' : '—'; mv[1].className = `metric-value ${getUptimeClass(site.uptimePct)}`; }
+
+  const mv1sub = card.querySelectorAll('.metric-sub');
+  if (mv1sub[1]) mv1sub[1].textContent = `${(checks[site.id]||[]).length} total checks`;
 
   const fill = card.querySelector('.uptime-bar-fill');
-  if (fill) { fill.style.width = (site.uptimePct || 0) + '%'; fill.className = 'uptime-bar-fill' + (site.uptimePct < 90 ? (site.uptimePct < 70 ? ' low' : ' warn') : ''); }
+  if (fill) {
+    fill.style.width = (site.uptimePct || 0) + '%';
+    const p = site.uptimePct || 0;
+    fill.className = 'uptime-bar-fill' + (p < 70 ? ' low' : p < 90 ? ' warn' : '');
+  }
   const uptimePctEl = card.querySelector('.uptime-pct');
   if (uptimePctEl) { uptimePctEl.textContent = site.uptimePct !== null ? site.uptimePct.toFixed(1) + '%' : '—'; uptimePctEl.className = `uptime-pct ${getUptimeClass(site.uptimePct)}`; }
 
@@ -617,9 +578,11 @@ function updateCardStatus(site) {
 
   const footer = card.querySelector('.footer-meta');
   if (footer) {
-    const ct = site.history.length ? `${site.history.filter(h=>h.status==='up').length}/${site.history.length} checks` : 'No checks yet';
-    const badge = useSupabase ? `<span class="storage-badge sb">☁ Cloud</span>` : `<span class="storage-badge local">⚡ Local</span>`;
-    footer.innerHTML = `${badge} ${ct} · <span>Every ${site.interval}s</span>`;
+    const ct  = site.history.length ? `${site.history.filter(h=>h.status==='up').length}/${site.history.length} checks` : 'No checks yet';
+    const tot = (checks[site.id]||[]).length;
+    const inc = (incidents[site.id]||[]).filter(i=>i.status==='down').length;
+    const badge = useGist ? `<span class="storage-badge sb">☁ Cloud</span>` : `<span class="storage-badge local">⚡ Local</span>`;
+    footer.innerHTML = `${badge} ${ct} · <span>Every ${site.interval}s</span>${inc>0?` · <span class="incident-count">${inc} outage${inc>1?'s':''}</span>`:''}`;
   }
 }
 
@@ -631,14 +594,6 @@ function updateSummaryBar() {
   const wr = sites.filter(s => s.responseMs !== null && s.status === 'up');
   document.getElementById('avgUptime').textContent   = wu.length ? (wu.reduce((a,s)=>a+s.uptimePct,0)/wu.length).toFixed(1)+'%' : '—';
   document.getElementById('avgResponse').textContent = wr.length ? Math.round(wr.reduce((a,s)=>a+s.responseMs,0)/wr.length)+'ms' : '—';
-
-  // Show cloud/local indicator in header
-  const ind = document.getElementById('storageIndicator');
-  if (ind) {
-    ind.textContent  = useSupabase ? '☁ Cloud' : '⚡ Local';
-    ind.className    = 'storage-indicator ' + (useSupabase ? 'cloud' : 'local');
-    ind.title        = useSupabase ? 'Data stored in Supabase cloud database' : 'Data stored in browser localStorage — configure Supabase for persistence';
-  }
 }
 
 // ── COUNTDOWN ────────────────────────────────
@@ -667,57 +622,63 @@ function updateCountdownDisplay() {
   if (el) el.textContent = countdown + 's';
 }
 
-// ── INCIDENT LOG PANEL (with date filter) ────
-async function openLogPanel(siteId) {
+// ── INCIDENT LOG PANEL ────────────────────────
+function openLogPanel(siteId) {
   const site = sites.find(s => s.id === siteId);
   if (!site) return;
 
-  const panel   = document.getElementById('logPanel');
-  const overlay = document.getElementById('logOverlay');
+  const panel = document.getElementById('logPanel');
+  panel.dataset.siteId = siteId;
   document.getElementById('logSiteName').textContent = site.name;
 
-  // Store current siteId for filter changes
-  panel.dataset.siteId = siteId;
-
-  // Set date range filter defaults (last 30 days)
   const filterEl = document.getElementById('logDateFilter');
-  if (filterEl && !filterEl.value) filterEl.value = '30';
+  if (filterEl && !filterEl.dataset.set) { filterEl.value = '30'; filterEl.dataset.set = '1'; }
 
   panel.classList.add('open');
-  overlay.classList.add('active');
-
-  await reloadLogContent(siteId);
+  document.getElementById('logOverlay').classList.add('active');
+  renderLogContent(siteId);
 }
 
-async function reloadLogContent(siteId) {
-  const content   = document.getElementById('logContent');
-  const filterEl  = document.getElementById('logDateFilter');
-  const days      = filterEl ? parseInt(filterEl.value) : 30;
-  const fromDate  = days === 0 ? null : Date.now() - days * 86400000;
+function renderLogContent(siteId) {
+  const content  = document.getElementById('logContent');
+  const filterEl = document.getElementById('logDateFilter');
+  const days     = filterEl ? parseInt(filterEl.value) : 30;
+  const fromTs   = days === 0 ? 0 : Date.now() - days * 86400000;
 
-  content.innerHTML = `<div class="log-loading"><div class="loading-spinner sm"></div><span>Loading history…</span></div>`;
-
-  const entries = await dbLoadIncidents(siteId, fromDate);
+  const all     = (incidents[siteId] || []).slice().reverse();
+  const entries = days === 0 ? all : all.filter(e => e.ts >= fromTs);
 
   if (entries.length === 0) {
+    const mode = useGist ? '☁ Stored in GitHub Gist' : '⚡ Local storage only';
     content.innerHTML = `
       <div class="log-empty">
         <svg viewBox="0 0 64 64" fill="none"><circle cx="32" cy="32" r="28" stroke="currentColor" stroke-width="2"/><path d="M22 32h20M32 22v20" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity="0.4"/></svg>
-        <p>No incidents in this period.<br/>${useSupabase ? 'Supabase cloud storage active.' : 'Configure Supabase for persistent history.'}</p>
+        <p>No incidents in this period.<br/><small>${mode}</small></p>
       </div>`;
     return;
   }
 
-  content.innerHTML = entries.map(entry => `
-    <div class="log-entry">
-      <div class="log-dot ${entry.status}"></div>
-      <div class="log-body">
-        <div class="log-event ${entry.status}">${escHtml(entry.event)}</div>
-        <div class="log-time">${formatFullTime(entry.ts)}</div>
-        ${entry.ms !== null ? `<div class="log-response">Response: ${entry.ms}ms${entry.code ? ' · HTTP ' + entry.code : ''}</div>` : ''}
-      </div>
-    </div>
-  `).join('');
+  // Group by date
+  const grouped = {};
+  entries.forEach(e => {
+    const day = new Date(e.ts).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+    if (!grouped[day]) grouped[day] = [];
+    grouped[day].push(e);
+  });
+
+  content.innerHTML = Object.entries(grouped).map(([day, dayEntries]) => `
+    <div class="log-date-group">
+      <div class="log-date-label">${day}</div>
+      ${dayEntries.map(entry => `
+        <div class="log-entry">
+          <div class="log-dot ${entry.status}"></div>
+          <div class="log-body">
+            <div class="log-event ${entry.status}">${escHtml(entry.event)}</div>
+            <div class="log-time">${formatFullTime(entry.ts)}</div>
+            ${entry.ms !== null ? `<div class="log-response">Response: ${entry.ms}ms${entry.code ? ' · HTTP ' + entry.code : ''}</div>` : ''}
+          </div>
+        </div>`).join('')}
+    </div>`).join('');
 }
 
 function closeLogPanel() {
@@ -728,8 +689,7 @@ function closeLogPanel() {
 // ── ADD MODAL ────────────────────────────────
 function openAddModal() {
   document.getElementById('modalOverlay').classList.add('active');
-  document.getElementById('siteName').value  = '';
-  document.getElementById('siteUrl').value   = '';
+  ['siteName','siteUrl'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('checkInterval').value = '30';
   document.getElementById('modalError').textContent = '';
   setTimeout(() => document.getElementById('siteName').focus(), 100);
@@ -790,13 +750,12 @@ async function handleSaveEdit() {
 
   if (!name) { errEl.textContent = 'Please enter a site name.'; return; }
   if (!url)  { errEl.textContent = 'Please enter a URL.'; return; }
-  const normalized = normalizeUrl(url);
-  if (!isValidUrl(normalized)) { errEl.textContent = 'Please enter a valid URL.'; return; }
+  if (!isValidUrl(normalizeUrl(url))) { errEl.textContent = 'Please enter a valid URL.'; return; }
   if (webhook && !webhook.includes('discord.com/api/webhooks/')) { errEl.textContent = 'Must be a Discord webhook URL.'; return; }
 
   const btn = document.getElementById('editModalSaveBtn');
   btn.disabled = true; btn.textContent = 'Saving…';
-  await updateSite(id, { name, url: normalized, interval, webhookUrl: webhook, alertMode });
+  await updateSite(id, { name, url: normalizeUrl(url), interval, webhookUrl: webhook, alertMode });
   btn.disabled = false; btn.textContent = 'Save Changes';
   closeEditModal();
   showToast(`${name} updated`, 'info', '✏️');
@@ -819,8 +778,7 @@ async function handleTestWebhook() {
 
   if (ok) {
     showToast('Test alert sent! ✅', 'up', '🎉');
-    errEl.style.color = 'var(--up)';
-    errEl.textContent = '✅ Test message delivered successfully.';
+    errEl.style.color = 'var(--up)'; errEl.textContent = '✅ Delivered successfully.';
     setTimeout(() => { errEl.textContent = ''; errEl.style.color = ''; }, 4000);
   } else {
     errEl.style.color = ''; errEl.textContent = '❌ Failed. Check the webhook URL.';
@@ -840,19 +798,16 @@ function bindEvents() {
   document.getElementById('editModalCancelBtn').addEventListener('click', closeEditModal);
   document.getElementById('editModalSaveBtn').addEventListener('click', handleSaveEdit);
   document.getElementById('testWebhookBtn').addEventListener('click', handleTestWebhook);
-
   document.getElementById('modalOverlay').addEventListener('click', e => { if(e.target===e.currentTarget) closeAddModal(); });
   document.getElementById('editModalOverlay').addEventListener('click', e => { if(e.target===e.currentTarget) closeEditModal(); });
-
   document.getElementById('siteUrl').addEventListener('keydown', e => { if(e.key==='Enter') handleAddSite(); });
   document.getElementById('siteName').addEventListener('keydown', e => { if(e.key==='Enter') document.getElementById('siteUrl').focus(); });
 
-  // Log date filter
   const logFilter = document.getElementById('logDateFilter');
   if (logFilter) {
     logFilter.addEventListener('change', () => {
       const siteId = document.getElementById('logPanel').dataset.siteId;
-      if (siteId) reloadLogContent(siteId);
+      if (siteId) renderLogContent(siteId);
     });
   }
 
@@ -861,7 +816,7 @@ function bindEvents() {
   });
 }
 
-// ── DISCORD WEBHOOK ──────────────────────────
+// ── DISCORD ───────────────────────────────────
 async function sendDiscordAlert(site, status, ms, code) {
   if (!site.webhookUrl) return;
   const isDown = status === 'down';
@@ -869,19 +824,17 @@ async function sendDiscordAlert(site, status, ms, code) {
     username: 'Uptracker',
     embeds: [{
       title:       isDown ? `🚨 ${site.name} is DOWN` : `✅ ${site.name} is back ONLINE`,
-      description: isDown
-        ? `**${site.name}** is unreachable. Immediate attention required.`
-        : `**${site.name}** has recovered and is responding normally.`,
+      description: isDown ? `**${site.name}** is unreachable.` : `**${site.name}** has recovered.`,
       color:  isDown ? 0xEF4444 : 0x10B981,
       fields: [
-        { name: '🌐 URL',      value: `[${getDomain(site.url)}](${site.url})`, inline: true },
-        { name: '📶 Status',   value: isDown ? '`OFFLINE`' : '`ONLINE`',       inline: true },
-        { name: '⏱ Response', value: ms !== null ? `\`${ms}ms\`` : '`timeout`', inline: true },
-        { name: '📊 Uptime',  value: site.uptimePct !== null ? `\`${site.uptimePct.toFixed(1)}%\`` : '`—`', inline: true },
-        { name: '🕐 Time',    value: `\`${formatFullTime(Date.now())}\``, inline: true },
-        { name: '💾 Storage', value: useSupabase ? '`Cloud (Supabase)`' : '`Local`', inline: true },
+        { name: '🌐 URL',       value: `[${getDomain(site.url)}](${site.url})`, inline: true },
+        { name: '📶 Status',    value: isDown ? '`OFFLINE`' : '`ONLINE`', inline: true },
+        { name: '⏱ Response',  value: ms !== null ? `\`${ms}ms\`` : '`timeout`', inline: true },
+        { name: '📊 Uptime',   value: site.uptimePct !== null ? `\`${site.uptimePct.toFixed(1)}%\`` : '`—`', inline: true },
+        { name: '📋 Total',    value: `\`${(checks[site.id]||[]).length} checks · ${(incidents[site.id]||[]).filter(i=>i.status==='down').length} outages\``, inline: true },
+        { name: '🕐 Time',     value: `\`${formatFullTime(Date.now())}\``, inline: true },
       ],
-      footer:    { text: `Uptracker • Every ${site.interval}s` },
+      footer:    { text: `Uptracker • Every ${site.interval}s • ${useGist ? '☁ Cloud' : '⚡ Local'}` },
       timestamp: new Date().toISOString(),
     }],
   };
@@ -894,14 +847,14 @@ async function sendTestDiscordAlert(webhookUrl, siteName) {
   const payload = {
     username: 'Uptracker',
     embeds: [{
-      title:       '🧪 Test Alert from Uptracker',
-      description: `This is a test notification for **${siteName || 'your site'}**.\n\nWebhook is working correctly! ✅\n\n**Storage mode:** ${useSupabase ? '☁ Supabase (persistent)' : '⚡ localStorage (browser only)'}`,
+      title:       '🧪 Test Alert — Uptracker',
+      description: `Webhook working for **${siteName}**! ✅\n\nStorage: **${useGist ? '☁ GitHub Gist (persistent)' : '⚡ localStorage (browser only)'}**`,
       color:  0x3B82F6,
       fields: [
         { name: '📡 Source', value: '`Uptracker Dashboard`', inline: true },
         { name: '🕐 Time',   value: `\`${formatFullTime(Date.now())}\``, inline: true },
       ],
-      footer:    { text: 'Uptracker • Realtime Website Monitor' },
+      footer: { text: 'Uptracker • Realtime Website Monitor' },
       timestamp: new Date().toISOString(),
     }],
   };
@@ -941,7 +894,7 @@ function formatRelativeTime(ts) {
   return Math.floor(d/86400000)+'d ago';
 }
 
-// ── EXPOSE TO HTML onclick ───────────────────
+// ── EXPOSE ───────────────────────────────────
 window.removeSite    = removeSite;
 window.openLogPanel  = openLogPanel;
 window.openSiteUrl   = openSiteUrl;

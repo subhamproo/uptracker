@@ -9,9 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <!-- Supabase JS client (loaded from CDN, no npm needed) -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-  <!-- Your Supabase config — edit this file with your project URL + anon key -->
+  <!-- Uptracker config — Gist ID + GitHub token -->
   <script src="config.js"></script>
 </head>
 <body>
@@ -86,13 +84,12 @@
 
   <!-- Main -->
   <main class="main">
-    <!-- Supabase Setup Banner (hidden when configured) -->
+    <!-- Setup Banner (hidden when Gist is configured) -->
     <div class="setup-banner" id="setupBanner">
       <div class="setup-banner-icon">☁️</div>
       <div class="setup-banner-text">
-        <strong>Enable persistent cloud storage</strong> — currently using browser localStorage (data clears with cache).
-        Set up <a href="https://supabase.com" target="_blank" rel="noopener">free Supabase</a> in 5 minutes to store 1 year of history.
-        <a href="https://github.com/subhamproo/uptracker#supabase-setup" target="_blank" rel="noopener">Setup guide →</a>
+        <strong>Cloud storage active via GitHub Gist.</strong>
+        All check history and incidents are saved persistently — survives cache clears, accessible from any device.
       </div>
       <button class="setup-banner-close" onclick="document.getElementById('setupBanner').style.display='none'" title="Dismiss">✕</button>
     </div>
@@ -260,17 +257,6 @@
   <div class="toast-container" id="toastContainer"></div>
 
   <script src="app.js"></script>
-  <script>
-    // Hide setup banner once Supabase is confirmed active
-    document.addEventListener('DOMContentLoaded', () => {
-      setTimeout(() => {
-        if (window.useSupabase || (window.UPTRACKER_CONFIG &&
-            window.UPTRACKER_CONFIG.SUPABASE_URL !== 'YOUR_SUPABASE_URL')) {
-          const b = document.getElementById('setupBanner');
-          if (b) b.style.display = 'none';
-        }
-      }, 800);
-    });
-  </script>
+</body>
 </body>
 </html>
