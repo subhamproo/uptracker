@@ -597,3 +597,52 @@ body {
 ::-webkit-scrollbar { width:4px; }
 ::-webkit-scrollbar-track { background:transparent; }
 ::-webkit-scrollbar-thumb { background:var(--border); border-radius:99px; }
+
+/* ── SVG ICON OVERRIDES ─────────────────────── */
+.mc-icon {
+  width: 22px; height: 22px;
+  flex-shrink: 0; color: var(--muted);
+  display: flex; align-items: center; justify-content: center;
+}
+.mc-icon svg { width: 18px; height: 18px; }
+
+/* Orb SVG icon */
+.orb-icon-svg {
+  width: 34px; height: 34px;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--red);
+  transition: color .6s ease;
+}
+.orb-icon-svg.up   { color: var(--green); }
+.orb-icon-svg.spin svg { animation: spin .8s linear infinite; }
+.orb-icon-svg svg  { width: 28px; height: 28px; }
+
+/* Incident icon */
+.inc-icon-wrap {
+  width: 20px; height: 20px; flex-shrink: 0; margin-top: 1px;
+  display: flex; align-items: center; justify-content: center;
+}
+.inc-icon-wrap svg { width: 16px; height: 16px; }
+.inc-icon-wrap.up   { color: var(--green); }
+.inc-icon-wrap.down { color: var(--red);   }
+
+.incident-empty .ie-icon {
+  width: 32px; height: 32px;
+  color: var(--dim);
+  display: flex; align-items: center; justify-content: center;
+}
+.incident-empty .ie-icon svg { width: 28px; height: 28px; }
+
+/* Recovery banner SVG icon */
+.rb-icon-svg {
+  width: 36px; height: 36px; color: var(--green);
+  display: flex; align-items: center; justify-content: center;
+}
+.rb-icon-svg svg { width: 30px; height: 30px; }
+
+/* Orb — remove emoji styling, apply SVG */
+.orb-inner {
+  display: flex; align-items: center; justify-content: center;
+}
+/* Remove old emoji sizing */
+.orb-emoji { display: none; }

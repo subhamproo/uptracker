@@ -120,8 +120,10 @@ function siteToJSON(s) {
     pinHash:     s.pinHash    || '',
     addedAt:     s.addedAt,
     // Cloudflare DNS Failover fields
+    // NOTE: cfApiToken is intentionally NOT stored in Gist for security
+    // Set CF_TOKEN as a Netlify environment variable instead
     cfEnabled:          s.cfEnabled          || false,
-    cfApiToken:         s.cfApiToken         || '',
+    cfApiToken:         '',                   // never persist token in Gist
     cfZoneId:           s.cfZoneId           || '',
     cfRecordId:         s.cfRecordId         || '',
     cfRecordName:       s.cfRecordName       || '',

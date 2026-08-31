@@ -28,20 +28,10 @@ function readBody(req) {
   });
 }
 
-function cfRequest(token, cfPath, method, body) {
+// ── Generic HTTPS request helper ─────────────
+function httpsRequest(options, payload) {
   return new Promise((resolve, reject) => {
-    const payload = body ? JSON.stringify(body) : null;
-    const req = https.request({
-      hostname: 'api.cloudflare.com',
-      path:     `/client/v4${cfPath}`,
-      method:   method.toUpperCase(),
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type':  'application/json',
-        'User-Agent':    'Uptracker-DevServer/1.0',
-        ...(payload ? { 'Content-Length': Buffer.byteLength(payload) } : {}),
-      },
-    }, (res) => {
+    const req = https.request(options, (res) => {
       let raw = '';
       res.on('data', c => raw += c);
       res.on('end', () => {
@@ -69,7 +59,6 @@ const server = http.createServer(async (req, res) => {
     let cfPath, cfToken, cfMethod = 'GET', cfBody = null;
 
     if (req.method === 'POST') {
-      // Netlify function format: POST with JSON body
       try {
         const raw = await readBody(req);
         const parsed = JSON.parse(raw);
@@ -83,7 +72,6 @@ const server = http.createServer(async (req, res) => {
         return;
       }
     } else {
-      // GET format: query param + header
       cfPath  = reqUrl.searchParams.get('path');
       cfToken = req.headers['x-cf-token'];
       cfMethod = req.method;
@@ -99,10 +87,67 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    const payload = cfBody ? JSON.stringify(cfBody) : null;
     try {
-      const result = await cfRequest(cfToken, cfPath, cfMethod, cfBody);
+      const result = await httpsRequest({
+        hostname: 'api.cloudflare.com',
+        path:     `/client/v4${cfPath}`,
+        method:   cfMethod.toUpperCase(),
+        headers: {
+          'Authorization': `Bearer ${cfToken}`,
+          'Content-Type':  'application/json',
+          'User-Agent':    'Uptracker-DevServer/1.0',
+          ...(payload ? { 'Content-Length': Buffer.byteLength(payload) } : {}),
+        },
+      }, payload);
       res.writeHead(result.status, {'Content-Type':'application/json'});
       res.end(typeof result.data === 'string' ? result.data : JSON.stringify(result.data));
+    } catch(e) {
+      res.writeHead(500, {'Content-Type':'application/json'});
+      res.end(JSON.stringify({error: e.message}));
+    }
+    return;
+  }
+
+  // ── /gist-proxy — GitHub Gist proxy (for maintenance page) ──
+  if (reqUrl.pathname === '/gist-proxy') {
+    let ghToken, gistId, gistFile;
+
+    if (req.method === 'POST') {
+      try {
+        const raw    = await readBody(req);
+        const parsed = JSON.parse(raw);
+        ghToken  = parsed.token;
+        gistId   = parsed.gistId;
+        gistFile = parsed.gistFile || 'uptracker_data.json';
+      } catch {
+        res.writeHead(400, {'Content-Type':'application/json'});
+        res.end(JSON.stringify({error:'Invalid JSON'}));
+        return;
+      }
+    }
+
+    if (!ghToken || !gistId) {
+      res.writeHead(400, {'Content-Type':'application/json'});
+      res.end(JSON.stringify({error:'Missing token or gistId'}));
+      return;
+    }
+
+    try {
+      const result = await httpsRequest({
+        hostname: 'api.github.com',
+        path:     `/gists/${gistId}`,
+        method:   'GET',
+        headers: {
+          'Authorization': `token ${ghToken}`,
+          'Accept':        'application/vnd.github.v3+json',
+          'User-Agent':    'Uptracker-DevServer/1.0',
+        },
+      }, null);
+      const raw = result.data?.files?.[gistFile]?.content;
+      if (!raw) { res.writeHead(404, {'Content-Type':'application/json'}); res.end(JSON.stringify({error:'File not found in Gist'})); return; }
+      res.writeHead(200, {'Content-Type':'application/json'});
+      res.end(raw); // return raw JSON content directly
     } catch(e) {
       res.writeHead(500, {'Content-Type':'application/json'});
       res.end(JSON.stringify({error: e.message}));

@@ -18,17 +18,21 @@ const http    = require('http');
 const { URL } = require('url');
 const { schedule } = require('@netlify/functions');
 
+// ── CONFIG FROM ENV VARS ──────────────────────
 const GITHUB_TOKEN  = process.env.GITHUB_TOKEN;
 const GIST_ID       = process.env.GIST_ID;
 const GIST_FILE     = 'uptracker_data.json';
+
+// Cloudflare token from env var — NEVER stored in Gist or sent to browser
+// Set CF_TOKEN in Netlify environment variables dashboard
+const CF_TOKEN_ENV  = process.env.CF_TOKEN || null;
+
+// Maintenance page base URL — where Cloudflare will redirect traffic when site is down
 const CHECK_TIMEOUT = 10000;
 const MAX_CHECKS    = 5000;
 const MAX_INCIDENTS = 5000;
 
-// Maintenance page base URL — where Cloudflare will redirect traffic when site is down
 const MAINTENANCE_BASE = 'uptimetracker.netlify.app';
-
-// ── HANDLER ──────────────────────────────────────────────────────────
 const handler = async () => {
   if (!GITHUB_TOKEN || !GIST_ID) {
     console.error('[Uptracker] Missing GITHUB_TOKEN or GIST_ID');
@@ -79,43 +83,39 @@ const handler = async () => {
 
     // ── Cloudflare DNS Failover ────────────────────────
     // Triggers on status change only (not every check)
-    if (statusChanged && site.cfEnabled && site.cfZoneId && site.cfRecordId && site.cfApiToken) {
+    if (statusChanged && site.cfEnabled && site.cfZoneId && site.cfRecordId) {
+      // Use env var token first (secure) — fallback to site-stored token (legacy support)
+      // To secure: set CF_TOKEN in Netlify env vars, remove cfApiToken from site settings
+      const cfToken = CF_TOKEN_ENV || site.cfApiToken || null;
+
+      if (!cfToken) {
+        console.warn(`[CF] ${site.name}: No CF token. Set CF_TOKEN in Netlify env vars.`);
+      } else {
       if (status === 'down') {
-        // For A records: switch to CNAME pointing to maintenance page
-        // For CNAME records: just update the content
-        // Cloudflare supports CNAME at root (zone apex) via CNAME flattening when proxied
         const failoverRecord = {
-          type:    'CNAME',               // always use CNAME for failover target
+          type:    'CNAME',
           name:    site.cfRecordName,
           content: MAINTENANCE_BASE,
           ttl:     60,
-          proxied: true,                  // must be proxied for CNAME flattening at root
+          proxied: true,
         };
 
-        // Save original type so we can restore correctly
-        sites[i] = {
-          ...site,
-          cfOriginalType: site.cfRecordType || 'A',
-          cfOriginalTtl:  site.cfOriginalTtl || 1,
-        };
+        sites[i] = { ...site, cfOriginalType: site.cfRecordType || 'A', cfOriginalTtl: site.cfOriginalTtl || 1 };
 
-        const cfResult = await cfUpdateRecord(
-          site.cfApiToken, site.cfZoneId, site.cfRecordId, failoverRecord
-        );
+        const cfResult = await cfUpdateRecord(cfToken, site.cfZoneId, site.cfRecordId, failoverRecord);
         if (cfResult.success) {
-          console.log(`[CF-FAILOVER] ${site.name}: DNS → maintenance page (CNAME)`);
+          console.log(`[CF-FAILOVER] ${site.name}: DNS → maintenance page`);
           sites[i] = { ...sites[i], cfFailoverActive: true };
         } else {
           console.warn(`[CF-FAILOVER] ${site.name}: FAILED — ${cfResult.error}`);
         }
 
       } else if (status === 'up' && site.cfFailoverActive) {
-        // Restore original DNS record
         const originalType    = site.cfOriginalType    || site.cfRecordType || 'A';
         const originalContent = site.cfOriginalContent || '';
 
         if (!originalContent) {
-          console.warn(`[CF-RESTORE] ${site.name}: No original value stored — cannot restore`);
+          console.warn(`[CF-RESTORE] ${site.name}: No original value stored`);
         } else {
           const restoreRecord = {
             type:    originalType,
@@ -125,9 +125,7 @@ const handler = async () => {
             proxied: !!site.cfProxied,
           };
 
-          const cfResult = await cfUpdateRecord(
-            site.cfApiToken, site.cfZoneId, site.cfRecordId, restoreRecord
-          );
+          const cfResult = await cfUpdateRecord(cfToken, site.cfZoneId, site.cfRecordId, restoreRecord);
           if (cfResult.success) {
             console.log(`[CF-RESTORE] ${site.name}: DNS → ${originalContent} (${originalType})`);
             sites[i] = { ...sites[i], cfFailoverActive: false };
@@ -136,6 +134,7 @@ const handler = async () => {
           }
         }
       }
+      } // end cfToken block
     }
 
     // ── Discord alerts ─────────────────────────────────
