@@ -143,16 +143,26 @@ const handler = async () => {
       let alertType  = 'status_change';
 
       if (site.alertMode === 'offline') {
+        // Only on DOWN status change
         shouldSend = statusChanged && status === 'down';
         alertType  = 'down';
       } else if (site.alertMode === 'both') {
         shouldSend = true;
-        alertType  = status === 'down' ? 'down' : 'heartbeat';
+        if (status === 'down') {
+          alertType = 'down';
+        } else if (statusChanged && prevStatus === 'down') {
+          // Was down, now up → recovery alert (priority over heartbeat)
+          alertType = 'recovery';
+        } else {
+          alertType = 'heartbeat';
+        }
       }
 
       if (shouldSend) {
         const failoverNote = (site.cfEnabled && statusChanged)
-          ? (status === 'down' ? '\n> 🔄 DNS failover activated — redirecting to maintenance page' : '\n> ✅ DNS failover deactivated — traffic restored')
+          ? (status === 'down'
+              ? '\n> 🔄 DNS failover activated — visitors redirected to maintenance page'
+              : '\n> ✅ DNS failover deactivated — traffic restored to your server')
           : '';
         await sendDiscord(site, status, ms, code, data, alertType, failoverNote).catch(e =>
           console.warn(`[Discord] ${site.name}: ${e.message}`)
@@ -360,9 +370,12 @@ async function gistSave(data) {
 }
 
 // ── DISCORD ───────────────────────────────────────────────────────────
+const ROLE_PING = '<@&1543965727550341211>'; // Role to ping on every alert
+
 async function sendDiscord(site, status, ms, code, data, alertType, extraNote = '') {
   const isDown      = status === 'down';
   const isHeartbeat = alertType === 'heartbeat';
+  const isRecovery  = alertType === 'recovery';
   const id          = site.id;
   const allChecks   = data.checks[id] || [];
   const upCount     = allChecks.filter(c => c.status === 'up').length;
@@ -376,17 +389,19 @@ async function sendDiscord(site, status, ms, code, data, alertType, extraNote = 
   });
 
   let title, description, color;
-  if (isHeartbeat) {
-    title       = `💚 ${site.name} — ONLINE`;
-    description = `**${site.name}** is responding normally. *(Periodic check)*${extraNote}`;
-    color       = 0x10B981;
-  } else if (isDown) {
+
+  if (isDown) {
     title       = `🚨 ${site.name} is DOWN`;
     description = `**${site.name}** is **unreachable**.\n> Confirmed by Netlify server check${extraNote}`;
     color       = 0xEF4444;
-  } else {
+  } else if (isRecovery) {
     title       = `✅ ${site.name} is back ONLINE`;
     description = `**${site.name}** has **recovered** and is responding normally.${extraNote}`;
+    color       = 0x10B981;
+  } else {
+    // Heartbeat
+    title       = `💚 ${site.name} — ONLINE`;
+    description = `**${site.name}** is responding normally. *(Periodic check)*${extraNote}`;
     color       = 0x10B981;
   }
 
@@ -401,7 +416,6 @@ async function sendDiscord(site, status, ms, code, data, alertType, extraNote = 
     { name: '🖥 Source',    value: '`Netlify server — 24/7`',          inline: true  },
   ];
 
-  // Add failover status if CF is enabled
   if (site.cfEnabled) {
     fields.push({
       name:   '🔄 DNS Failover',
@@ -410,16 +424,20 @@ async function sendDiscord(site, status, ms, code, data, alertType, extraNote = 
     });
   }
 
+  const footerText = isHeartbeat
+    ? 'Uptracker • Heartbeat (Online & Offline mode)'
+    : isRecovery
+    ? 'Uptracker • Service Recovered'
+    : `Uptracker • every ${site.interval || 60}s`;
+
   const payload = {
+    // Role ping as message content — shows outside the embed so it notifies properly
+    content:    ROLE_PING,
     username:   'Uptracker',
     avatar_url: `https://www.google.com/s2/favicons?domain=${domain}&sz=64`,
     embeds: [{
       title, description, color, fields,
-      footer: {
-        text: isHeartbeat
-          ? 'Uptracker • Heartbeat (Online & Offline mode)'
-          : `Uptracker • every ${site.interval || 60}s`,
-      },
+      footer:    { text: footerText },
       timestamp: new Date().toISOString(),
     }],
   };

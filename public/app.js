@@ -631,17 +631,21 @@ async function sendTestDiscord(webhookUrl, siteName) {
   try {
     const res = await fetch(webhookUrl, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username:'Uptracker', embeds:[{
-        title: '🧪 Test Alert — Uptracker',
-        description:`Webhook working for **${siteName}** ✅\n**Source:** Netlify server-side monitoring`,
-        color: 0x3B82F6,
-        fields:[
-          {name:'🖥 Monitored by',value:'`Netlify Scheduled Function`',inline:true},
-          {name:'🕐 Time',value:`\`${formatFullTime(Date.now())}\``,inline:true},
-        ],
-        footer:{text:'Uptracker • Server-side checks 24/7'},
-        timestamp: new Date().toISOString(),
-      }]}),
+      body: JSON.stringify({
+        content: '<@&1543965727550341211>',
+        username: 'Uptracker',
+        embeds:[{
+          title: '🧪 Test Alert — Uptracker',
+          description:`Webhook working for **${siteName}** ✅\n**Source:** Netlify server-side monitoring`,
+          color: 0x3B82F6,
+          fields:[
+            {name:'🖥 Monitored by',value:'`Netlify Scheduled Function`',inline:true},
+            {name:'🕐 Time',value:`\`${formatFullTime(Date.now())}\``,inline:true},
+          ],
+          footer:{text:'Uptracker • Server-side checks 24/7'},
+          timestamp: new Date().toISOString(),
+        }],
+      }),
     });
     return res.ok || res.status === 204;
   } catch { return false; }
