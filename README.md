@@ -6,189 +6,268 @@ A professional, free website uptime tracker with **server-side monitoring**, **D
 
 ## Features
 
-- 🖥 **Server-side monitoring** — Netlify scheduled function checks every 60s, 24/7, no browser needed
-- ☁ **Persistent cloud storage** — GitHub Gist (free, survives cache clears, works across devices)
-- 📊 **1-year history** — incident log with date filters (24h / 7d / 30d / 90d / 1yr / all time)
-- 🔔 **Discord webhooks** — Offline Only or Online & Offline (heartbeat every check)
-- 🔐 **Per-site PIN protection** — 4-digit PIN per site, master PIN `381998` for admin override
-- 🔄 **Cloudflare DNS Failover (FREE)** — auto-switches DNS to maintenance page on downtime, restores when recovered
-- 🛠 **Hosted maintenance page** — beautiful status page at `/maintenance` with live status polling and auto-redirect on recovery
-- 📱 **Fully responsive** — works on all screen sizes
-- ⚡ **Zero dependencies** — pure HTML/CSS/JS, no npm build step, works on any static host
+| Feature | Details |
+|---|---|
+| 🖥 Server-side monitoring | Netlify scheduled function, runs every 60s, 24/7, no browser needed |
+| ☁ Persistent cloud storage | GitHub Gist — survives cache clears, works across all devices |
+| 📊 1-year history | Incident log with date filters: 24h / 7d / 30d / 90d / 1yr / all time |
+| 🔔 Discord webhooks | Offline Only or Online & Offline (heartbeat on every check) |
+| 🔐 Per-site PIN protection | 4-digit PIN per site, master PIN `381998` for admin override |
+| 🔄 Cloudflare DNS Failover | **Free** — auto-switches DNS to maintenance page on downtime, auto-restores on recovery |
+| 🛠 Hosted maintenance page | `/maintenance` — live status polling, auto-redirect when site recovers |
+| 📱 Fully responsive | Mobile, tablet, desktop |
+| ⚡ Zero build step | Pure HTML/CSS/JS — deploys on any static host |
 
 ---
 
-## Architecture
+## How It Works
 
 ```
-Visitor
-  │
-  ▼
-roiprofitacademy.in  ←── Cloudflare DNS (free)
-  │                            │
-  │   site UP: normal DNS      │   site DOWN: DNS switched to maintenance page
-  │                            ▼
-  │                   uptimetracker.netlify.app/maintenance
-  │                            │
-  ▼                            ▼
-Real hosting server    Uptracker maintenance page
-                       (polls Gist for live status,
-                        auto-redirects when site recovers)
+┌─────────────────────────────────────────────────────────────────┐
+│                    EVERY 60 SECONDS (server)                    │
+│                                                                 │
+│  Netlify Function                                               │
+│       │                                                         │
+│       ├── HEAD request → each site                              │
+│       ├── Write result → GitHub Gist (persistent storage)       │
+│       ├── Status changed to DOWN?                               │
+│       │     ├── PATCH Cloudflare DNS → maintenance page         │
+│       │     └── Send Discord alert 🔴                           │
+│       └── Status changed to UP (was down)?                      │
+│             ├── PATCH Cloudflare DNS → restore original         │
+│             └── Send Discord alert ✅                           │
+└─────────────────────────────────────────────────────────────────┘
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Background (every 60s):
-Netlify Function → HEAD request to each site
-                → writes result to GitHub Gist
-                → if DOWN: PATCH Cloudflare DNS record
-                → if UP (was down): PATCH DNS back
-                → sends Discord alert
+┌─────────────────────────────────────────────────────────────────┐
+│                    VISITOR EXPERIENCE                           │
+│                                                                 │
+│  Site UP:   visitor → roiprofitacademy.in → real server         │
+│                                                                 │
+│  Site DOWN: visitor → roiprofitacademy.in → Cloudflare DNS      │
+│                            (switched by Uptracker)              │
+│                        → maintenance.html (our hosted page)     │
+│                        → polls Gist every 30s for status        │
+│                        → site recovers → auto-redirect back     │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Cloudflare DNS Failover Setup (Free — Step by Step)
+## Cloudflare DNS Failover — Full Setup Guide (Free)
 
-### What it does
-When Uptracker detects your site is **down**, it calls the Cloudflare API to switch your DNS record to point to our maintenance page. When your site **recovers**, it restores your DNS automatically. Visitors never see a broken page.
+### What actually happens
 
-### Step 1 — Move DNS to Cloudflare (free)
+Your domain (`roiprofitacademy.in`) uses an **A record** pointing to your hosting server IP.
 
-1. Go to [cloudflare.com](https://cloudflare.com) → Create free account
+When Uptracker detects the site is **down**:
+1. Calls Cloudflare API → changes the A record to a **CNAME** pointing to `uptimetracker.netlify.app`
+2. Cloudflare "CNAME flattening" resolves this at the root domain automatically (free feature)
+3. Visitors now land on the Uptracker maintenance page instead of a broken site
+
+When the site comes back **up**:
+1. Calls Cloudflare API → restores the original **A record** with your real server IP
+2. Traffic flows back to your server normally
+
+Total failover time: **~2 minutes** (60s detection + 1s API + ~60s DNS propagation at TTL=60)
+
+---
+
+### Step 1 — Move DNS to Cloudflare (free, one-time)
+
+1. Go to [cloudflare.com](https://cloudflare.com) → create a free account
 2. Click **Add a Site** → enter your domain → select **Free plan**
-3. Cloudflare will scan your existing DNS records
-4. Go to your domain registrar (GoDaddy, Namecheap, etc.) → update nameservers to Cloudflare's provided nameservers
+3. Cloudflare scans your existing DNS records automatically
+4. Log into your **domain registrar** (GoDaddy, Namecheap, etc.) → change nameservers to the two Cloudflare provides
 5. Wait 5–30 minutes for propagation
 
-### Step 2 — Create an API Token
+> Your existing DNS records (A records, MX, etc.) are imported automatically. Nothing breaks.
+
+---
+
+### Step 2 — Create a Cloudflare API Token
 
 1. Go to [dash.cloudflare.com/profile/api-tokens](https://dash.cloudflare.com/profile/api-tokens)
 2. Click **Create Token**
-3. Use template: **Edit zone DNS**
-4. Under Zone Resources: select **Specific zone** → choose your domain
-5. Click **Continue to summary** → **Create Token**
-6. **Copy the token** (shown only once)
+3. Click **Use template** next to **"Edit zone DNS"**
+4. Set **Zone Resources** → Include → **Specific zone** → select your domain
+5. Leave Client IP Filtering and TTL empty
+6. Click **Continue to summary** → **Create Token**
+7. **Copy the token immediately** — it's shown only once
 
-### Step 3 — Get your Zone ID and DNS Record ID
+The token only has permission to edit DNS on that one domain. Nothing else.
 
-**Zone ID:**
-- Cloudflare Dashboard → your domain → **Overview** tab → scroll down → **Zone ID** (right side)
+---
 
-**DNS Record ID:**
-- Go to your domain's **DNS** tab in Cloudflare
-- Find the A or CNAME record for your root domain (e.g. `roiprofitacademy.in` → points to your server IP or hosting CNAME)
-- You need the record's ID — get it via API:
+### Step 3 — Find your Zone ID and DNS Record ID
+
+**Zone ID** — Cloudflare Dashboard → click your domain → **Overview** tab → scroll to bottom right → copy **Zone ID**
+
+**DNS Record ID** — run this in terminal (replace with your values):
 
 ```bash
-curl https://api.cloudflare.com/client/v4/zones/YOUR_ZONE_ID/dns_records \
-  -H "Authorization: Bearer YOUR_API_TOKEN" | python -m json.tool
+curl "https://api.cloudflare.com/client/v4/zones/YOUR_ZONE_ID/dns_records" \
+  -H "Authorization: Bearer YOUR_API_TOKEN"
 ```
 
-Look for the record matching your domain. Copy its `"id"` field.
+Look for the `A` record matching your root domain. Copy its `"id"` value.
 
-**Or use the "Test Connection" button in Uptracker** — it auto-fills the record name, type and original value for you.
+**Or just use the "Test Connection" button in Uptracker** — it calls the API for you and auto-fills all fields including the original IP.
+
+---
 
 ### Step 4 — Configure in Uptracker
 
-1. Open Uptracker → click ✏️ edit on your site
+1. Open Uptracker → click ✏️ edit on your site (enter PIN if set)
 2. Scroll to **Cloudflare DNS Failover** section
-3. Toggle it **ON**
+3. Toggle the switch **ON**
 4. Fill in:
-   - **API Token** — the token from Step 2
-   - **Zone ID** — from Step 3
-   - **DNS Record ID** — from Step 3
-   - **Record Name** — your domain (e.g. `roiprofitacademy.in`)
-   - **Record Type** — `CNAME` (recommended) or `A`
-   - **Original DNS Value** — click **"Test Connection"** to auto-fill this
-   - **Maintenance URL** — leave blank to use our hosted page, or enter your own
-5. Click **Test Connection** — confirms your token is valid and reads current DNS value
+
+| Field | What to enter |
+|---|---|
+| API Token | Token from Step 2 |
+| Zone ID | From Step 3 or Cloudflare dashboard |
+| DNS Record ID | From Step 3 (the A record for your root domain) |
+| Record Name | Your domain e.g. `roiprofitacademy.in` |
+| Record Type | `A` (if your hosting uses an IP address) |
+| Original DNS Value | Your server IP e.g. `103.49.70.235` |
+| Maintenance URL | Leave blank to use our page, or enter your own URL |
+
+5. Click **Test Connection** — validates your token and auto-fills the record details
 6. Click **Save Changes**
 
-### Step 5 — Test it
+---
 
-The next time your site goes offline, Cloudflare DNS will automatically switch within ~60 seconds. Visitors will see your maintenance page instead of a broken error.
+### Step 5 — Verify it works
+
+The next time your hosting goes down, within ~2 minutes:
+- Cloudflare DNS switches to point to the maintenance page
+- Visitors see a professional maintenance page instead of a browser error
+- The maintenance page polls live status every 30s
+- When hosting recovers, DNS restores automatically and visitors are redirected
 
 ---
 
 ## Maintenance Page
 
-Hosted at: `https://uptimetracker.netlify.app/maintenance`
+Hosted at `https://uptimetracker.netlify.app/maintenance`
 
-**Features:**
-- Shows your site name, favicon, and current status
-- Polls Gist every 30s for live status updates
-- Progress bar showing uptime history
-- When site recovers: shows "Back Online!" with 5-second countdown then auto-redirects visitors to your real site
+- Shows site name, favicon, current status badge
+- Uptime percentage and last response time from server checks
+- Polls GitHub Gist every 30s for live status updates
+- When site recovers → "Back Online! Redirecting in 5s…" → `window.location.replace()` to real site
 
-**Query parameters (added automatically by Uptracker):**
+**URL format (added automatically):**
 ```
-?id=site_id&name=Site+Name&url=https://yoursite.com
+https://uptimetracker.netlify.app/maintenance?id=SITE_ID&name=Site+Name&url=https://yoursite.com
 ```
 
-**Custom maintenance page:** You can use your own URL in the settings — any URL works, Uptracker will point DNS there during outages.
+**Custom maintenance URL:** You can enter any URL in the settings. During downtime, Cloudflare DNS will point to whatever you specify.
 
 ---
 
-## Storage (GitHub Gist)
+## Discord Alerts
 
-All data lives in a single private GitHub Gist as JSON:
+Two modes per site:
 
-```json
-{
-  "sites": [{
-    "id": "site_...",
-    "name": "ROI Profit Academy",
-    "url": "https://roiprofitacademy.in",
-    "interval": 30,
-    "webhookUrl": "https://discord.com/api/webhooks/...",
-    "alertMode": "both",
-    "pinHash": "a1b2c3d4",
-    "cfEnabled": true,
-    "cfZoneId": "...",
-    "cfRecordId": "...",
-    "cfOriginalContent": "your-server.hosting.com",
-    "cfFailoverActive": false
-  }],
-  "checks":    { "site_id": [{ "ts": 1234, "status": "up", "ms": 340 }] },
-  "incidents": { "site_id": [{ "ts": 1234, "status": "down", "event": "..." }] }
-}
-```
+| Mode | When alerts fire |
+|---|---|
+| **Offline Only** | Once when site goes DOWN |
+| **Online & Offline** | On DOWN, on recovery, AND a heartbeat on every server check |
+
+Alert embeds include: URL, status, response time, HTTP code, uptime %, outage count, IST timestamp, DNS failover status.
 
 ---
 
 ## PIN Security
 
-Each site is protected by a 4-digit PIN set when adding the site.
+Each site gets a 4-digit PIN when added. The PIN gates editing and deletion.
 
 | Action | Requires |
 |---|---|
-| Edit settings | Site PIN or master PIN |
-| Delete site | Site PIN or master PIN |
-| Change PIN | Current PIN or master PIN |
-| All actions | Master PIN `381998` always works |
+| Edit site settings | Site PIN **or** master PIN |
+| Delete site | Site PIN **or** master PIN |
+| Change PIN | Current site PIN **or** master PIN |
+| Override anything | Master PIN `381998` |
 
-PINs are hashed (djb2) before storage — never stored in plaintext.
+PINs are hashed with djb2 before storage — never stored as plaintext.
+
+**For sites added before the PIN feature:** no PIN is set. The edit button opens directly. Use "Change PIN" inside the edit modal (enter master PIN as current PIN) to add protection.
 
 ---
 
-## Deploy (Free Hosting)
+## Storage Schema (GitHub Gist)
 
-### Netlify (recommended)
-1. Fork/push to GitHub
-2. Connect to Netlify → auto-deploys on every push
-3. Set environment variables in **Site config → Environment variables:**
+All data is one JSON file in a private Gist:
+
+```json
+{
+  "version": 4,
+  "savedAt": "2026-08-31T...",
+  "sites": [
+    {
+      "id":               "site_1234_abcde",
+      "name":             "ROI Profit Academy",
+      "url":              "https://roiprofitacademy.in",
+      "interval":         30,
+      "webhookUrl":       "https://discord.com/api/webhooks/...",
+      "alertMode":        "both",
+      "pinHash":          "a1b2c3d4",
+
+      "cfEnabled":        true,
+      "cfApiToken":       "cfut_...",
+      "cfZoneId":         "67966e6893f243b57726a65f1e3d262f",
+      "cfRecordId":       "38242dd2bef59b346ffb87963eebc822",
+      "cfRecordName":     "roiprofitacademy.in",
+      "cfRecordType":     "A",
+      "cfOriginalContent":"103.49.70.235",
+      "cfOriginalType":   "A",
+      "cfOriginalTtl":    1,
+      "cfProxied":        true,
+      "cfMaintenanceUrl": "",
+      "cfFailoverActive": false,
+
+      "lastStatus":    "up",
+      "lastMs":        340,
+      "lastCode":      200,
+      "lastChecked":   "2026-08-31T..."
+    }
+  ],
+  "checks": {
+    "site_1234_abcde": [
+      { "ts": 1234567890, "status": "up", "ms": 340 }
+    ]
+  },
+  "incidents": {
+    "site_1234_abcde": [
+      { "ts": 1234567890, "status": "down", "ms": 10000, "code": null, "event": "🔴 Site went down" }
+    ]
+  }
+}
+```
+
+---
+
+## Deployment
+
+### Netlify (recommended — includes server-side monitoring)
+
+1. Push repo to GitHub
+2. Connect to [netlify.com](https://netlify.com) → New site from Git
+3. Build settings are in `netlify.toml` — no changes needed
+4. Add environment variables: **Site config → Environment variables**
 
 | Variable | Value |
 |---|---|
-| `GITHUB_TOKEN` | Your GitHub PAT (gist scope) |
-| `GIST_ID` | Your Gist ID |
+| `GITHUB_TOKEN` | GitHub Personal Access Token with `gist` scope only |
+| `GIST_ID` | Your Gist ID (created manually or auto-created on first deploy) |
 
-4. The scheduled function (`netlify/functions/monitor.js`) runs automatically every minute
+5. Deploy — the scheduled function runs every 60 seconds automatically
 
-### GitHub Pages
-```
-Settings → Pages → Deploy from branch main / public folder
-```
-Note: GitHub Pages does not run the scheduled function. Use Netlify for full server-side monitoring.
+### GitHub Pages (static only — no server monitoring)
+
+Settings → Pages → Deploy from branch `main` / folder `/public`
+
+Without a scheduled function, monitoring only runs while the browser tab is open. Use Netlify for 24/7 coverage.
 
 ---
 
@@ -197,18 +276,20 @@ Note: GitHub Pages does not run the scheduled function. Use Netlify for full ser
 ```
 uptracker/
 ├── public/
-│   ├── index.html          # Dashboard
-│   ├── maintenance.html    # Hosted maintenance page
-│   ├── style.css           # All styles
-│   ├── app.js              # Dashboard UI + Gist client
-│   ├── config.js           # Generated at build — GitHub token + Gist ID
-│   └── assets/icons/favicon.svg
+│   ├── index.html           # Main dashboard
+│   ├── maintenance.html     # Hosted maintenance/status page
+│   ├── style.css            # All styles (dark theme)
+│   ├── app.js               # Dashboard logic + Gist read/write + PIN engine
+│   ├── config.js            # ⚠ Generated at build (gitignored) — holds token + Gist ID
+│   ├── config.example.js    # Template for config.js
+│   └── assets/icons/
+│       └── favicon.svg
 ├── netlify/
 │   └── functions/
-│       └── monitor.js      # Scheduled function — checks, DNS failover, Discord
-├── netlify.toml            # Netlify build config + headers
-├── build.js                # Generates config.js from env vars
-├── package.json
+│       └── monitor.js       # Scheduled function: checks + DNS failover + Discord
+├── build.js                 # Generates config.js from Netlify env vars at build time
+├── netlify.toml             # Build command + function directory + cache headers
+├── package.json             # @netlify/functions dependency
 └── README.md
 ```
 
@@ -216,23 +297,32 @@ uptracker/
 
 ## FAQ
 
-**Q: Does Cloudflare DNS failover work on the free plan?**
-Yes. Cloudflare's free plan includes full DNS API access with no API call limits. DNS TTL minimum is 1 minute on free plan, so failover happens within ~60–120 seconds of detection.
+**Q: Does Cloudflare DNS failover really work on the free plan?**
+Yes. The free plan has full DNS API access, unlimited API calls, and supports CNAME flattening at the root domain. The only limitation is TTL — minimum 60 seconds, which means worst-case failover is ~2 minutes.
 
-**Q: What if I can't move my DNS to Cloudflare?**
-The rest of Uptracker still works fully — monitoring, Discord alerts, incident history, PIN protection. DNS failover is optional.
+**Q: My domain uses an A record, not CNAME. Does it still work?**
+Yes. Uptracker detects the record type. On failover, it temporarily switches the A record to a CNAME pointing to the maintenance page (Cloudflare flattens this transparently). On recovery, it restores the original A record with your real IP.
 
-**Q: How long does DNS failover take?**
-- Detection: up to 60 seconds (server checks every minute)
-- DNS API call: ~1 second
-- DNS propagation: 60 seconds (TTL=60, Cloudflare's minimum on free plan)
-- **Total: ~2 minutes worst case**
+**Q: What if Cloudflare is also down?**
+Failover won't activate, but the monitoring and Discord alerts still work. This is extremely rare — Cloudflare has 99.99%+ uptime.
 
-**Q: Will the maintenance page auto-redirect when my site recovers?**
-Yes — it polls the Gist every 30 seconds, detects the `lastStatus: "up"` change, shows a 5-second countdown, then `window.location.replace()` to your real site.
+**Q: How long does the full failover take?**
 
-**Q: Is the GitHub token safe in config.js?**
-The token has only `gist` scope — it can only read/write your private Gist. It cannot access repositories, make commits, or do anything else. It's safe to include in a deployed static site.
+| Stage | Time |
+|---|---|
+| Detection (server check) | up to 60s |
+| Cloudflare API call | ~1s |
+| DNS propagation (TTL=60) | ~60s |
+| **Total worst case** | **~2 minutes** |
+
+**Q: Will my SEO be affected?**
+The maintenance page uses `<meta name="robots" content="noindex, nofollow">` so search engines won't index it. Your real pages stay indexed.
+
+**Q: Is my Cloudflare API token safe?**
+It's stored in the GitHub Gist (private, accessible only with your GitHub token). The CF token only has Edit DNS permission on one specific zone — it cannot access billing, settings, or any other Cloudflare feature.
+
+**Q: Is my GitHub token safe in `config.js`?**
+The token has `gist` scope only — it can read/write your private Gist and nothing else. It cannot access repositories, create commits, or modify anything outside that Gist.
 
 ---
 
