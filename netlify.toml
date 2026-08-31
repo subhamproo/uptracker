@@ -5,7 +5,6 @@
 [functions]
   directory = "netlify/functions"
 
-# Prevent CDN caching of config.js and app files
 [[headers]]
   for = "/config.js"
   [headers.values]
@@ -26,7 +25,8 @@
   [headers.values]
     Cache-Control = "no-store, no-cache, must-revalidate"
 
-
+[[headers]]
+  for = "/*"
   [headers.values]
     X-Frame-Options = "DENY"
     X-Content-Type-Options = "nosniff"
