@@ -259,7 +259,7 @@ All data is one JSON file in a private Gist:
 | Variable | Value |
 |---|---|
 | `GITHUB_TOKEN` | GitHub Personal Access Token with `gist` scope only |
-| `GIST_ID` | Your Gist ID (created manually or auto-created on first deploy) |
+| `GIST_ID` | Your Gist ID (created manually or auto-created on first deploy eg: 6460a6dfda90fbea4aae70f0ef973bfb) |
 
 5. Deploy — the scheduled function runs every 60 seconds automatically
 

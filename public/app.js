@@ -706,31 +706,30 @@ function bindEvents() {
 }
 
 // ── CLOUDFLARE API HELPER ─────────────────────
-// On localhost: routes through /cf-proxy to avoid CORS
-// On production: calls Cloudflare API directly (server-side in monitor.js handles real failover)
-async function cfApiFetch(path, token, options = {}) {
+// Always routes through a server-side proxy to avoid CORS.
+// Localhost → /cf-proxy (server.js handles it)
+// Netlify   → /.netlify/functions/cf-proxy (Netlify function)
+async function cfApiFetch(path, token, method = 'GET', body = null) {
   const isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+
   if (isLocal) {
-    // Use local dev proxy
-    const res = await fetch(`/cf-proxy?path=${encodeURIComponent(path)}`, {
-      ...options,
+    // Local dev server proxy (server.js) — GET proxy via query param + x-cf-token header
+    const fetchOptions = {
+      method: method,
       headers: {
-        'Content-Type':  'application/json',
-        'x-cf-token':    token,
-        ...(options.headers || {}),
+        'Content-Type': 'application/json',
+        'x-cf-token':   token,
       },
-    });
+    };
+    if (body && method !== 'GET') fetchOptions.body = JSON.stringify(body);
+    const res = await fetch(`/cf-proxy?path=${encodeURIComponent(path)}`, fetchOptions);
     return res.json();
   } else {
-    // Direct call — works from server context but not browser (CORS)
-    // On production this function is only used for Test Connection UI validation
-    const res = await fetch(`https://api.cloudflare.com/client/v4${path}`, {
-      ...options,
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type':  'application/json',
-        ...(options.headers || {}),
-      },
+    // Netlify function proxy — POST with JSON body containing all params
+    const res = await fetch('/.netlify/functions/cf-proxy', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ path, token, method, body }),
     });
     return res.json();
   }
@@ -752,7 +751,7 @@ async function handleCfTest() {
   btn.disabled = true; btn.textContent = 'Testing…'; errEl.textContent = '';
 
   try {
-    const data = await cfApiFetch(`/zones/${zoneId}/dns_records/${recordId}`, token);
+    const data = await cfApiFetch(`/zones/${zoneId}/dns_records/${recordId}`, token, 'GET');
 
     if (data.success) {
       const rec = data.result;

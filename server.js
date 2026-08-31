@@ -8,7 +8,6 @@ const http  = require('http');
 const https = require('https');
 const fs    = require('fs');
 const path  = require('path');
-const url   = require('url');
 
 const PORT = 3000;
 const MIME = {
@@ -21,68 +20,99 @@ const MIME = {
   json: 'application/json',
 };
 
+function readBody(req) {
+  return new Promise(resolve => {
+    let body = '';
+    req.on('data', c => body += c);
+    req.on('end', () => resolve(body));
+  });
+}
+
+function cfRequest(token, cfPath, method, body) {
+  return new Promise((resolve, reject) => {
+    const payload = body ? JSON.stringify(body) : null;
+    const req = https.request({
+      hostname: 'api.cloudflare.com',
+      path:     `/client/v4${cfPath}`,
+      method:   method.toUpperCase(),
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type':  'application/json',
+        'User-Agent':    'Uptracker-DevServer/1.0',
+        ...(payload ? { 'Content-Length': Buffer.byteLength(payload) } : {}),
+      },
+    }, (res) => {
+      let raw = '';
+      res.on('data', c => raw += c);
+      res.on('end', () => {
+        try { resolve({ status: res.statusCode, data: JSON.parse(raw) }); }
+        catch { resolve({ status: res.statusCode, data: raw }); }
+      });
+    });
+    req.on('error', reject);
+    if (payload) req.write(payload);
+    req.end();
+  });
+}
+
 const server = http.createServer(async (req, res) => {
-  // ── CORS headers for all responses ──────────
+  // CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, PATCH, POST, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
-
+  res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type, x-cf-token');
   if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
 
-  const parsed = url.parse(req.url, true);
+  const reqUrl = new URL(req.url, `http://localhost:${PORT}`);
 
-  // ── Cloudflare API proxy ─────────────────────
-  // GET  /cf-proxy?path=/zones/...   (read record)
-  // PATCH /cf-proxy?path=/zones/...  (update record)
-  if (parsed.pathname === '/cf-proxy') {
-    const cfPath  = parsed.query.path;
-    const cfToken = req.headers['x-cf-token'];
+  // ── /cf-proxy — Cloudflare API proxy ────────
+  if (reqUrl.pathname === '/cf-proxy') {
+    let cfPath, cfToken, cfMethod = 'GET', cfBody = null;
+
+    if (req.method === 'POST') {
+      // Netlify function format: POST with JSON body
+      try {
+        const raw = await readBody(req);
+        const parsed = JSON.parse(raw);
+        cfPath   = parsed.path;
+        cfToken  = parsed.token;
+        cfMethod = parsed.method || 'GET';
+        cfBody   = parsed.body   || null;
+      } catch {
+        res.writeHead(400, {'Content-Type':'application/json'});
+        res.end(JSON.stringify({error:'Invalid JSON'}));
+        return;
+      }
+    } else {
+      // GET format: query param + header
+      cfPath  = reqUrl.searchParams.get('path');
+      cfToken = req.headers['x-cf-token'];
+      cfMethod = req.method;
+      if (cfMethod === 'PATCH' || cfMethod === 'PUT') {
+        const raw = await readBody(req);
+        try { cfBody = JSON.parse(raw); } catch { cfBody = null; }
+      }
+    }
 
     if (!cfPath || !cfToken) {
-      res.writeHead(400, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'Missing path or token' }));
+      res.writeHead(400, {'Content-Type':'application/json'});
+      res.end(JSON.stringify({error:'Missing path or token'}));
       return;
     }
 
-    let body = '';
-    req.on('data', c => body += c);
-    req.on('end', () => {
-      const options = {
-        hostname: 'api.cloudflare.com',
-        path:     `/client/v4${cfPath}`,
-        method:   req.method === 'PATCH' ? 'PATCH' : 'GET',
-        headers: {
-          'Authorization': `Bearer ${cfToken}`,
-          'Content-Type':  'application/json',
-          'User-Agent':    'Uptracker-DevServer/1.0',
-        },
-      };
-
-      if (body && req.method === 'PATCH') {
-        options.headers['Content-Length'] = Buffer.byteLength(body);
-      }
-
-      const cfReq = https.request(options, (cfRes) => {
-        let data = '';
-        cfRes.on('data', c => data += c);
-        cfRes.on('end', () => {
-          res.writeHead(cfRes.statusCode, { 'Content-Type': 'application/json' });
-          res.end(data);
-        });
-      });
-      cfReq.on('error', (e) => {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: e.message }));
-      });
-      if (body && req.method === 'PATCH') cfReq.write(body);
-      cfReq.end();
-    });
+    try {
+      const result = await cfRequest(cfToken, cfPath, cfMethod, cfBody);
+      res.writeHead(result.status, {'Content-Type':'application/json'});
+      res.end(typeof result.data === 'string' ? result.data : JSON.stringify(result.data));
+    } catch(e) {
+      res.writeHead(500, {'Content-Type':'application/json'});
+      res.end(JSON.stringify({error: e.message}));
+    }
     return;
   }
 
-  // ── Static file serving ──────────────────────
+  // ── Static files ─────────────────────────────
   const filePath = path.join(__dirname, 'public',
-    parsed.pathname === '/' ? 'index.html' : parsed.pathname);
+    reqUrl.pathname === '/' ? 'index.html' : reqUrl.pathname);
 
   try {
     const data = fs.readFileSync(filePath);
@@ -93,13 +123,13 @@ const server = http.createServer(async (req, res) => {
     });
     res.end(data);
   } catch {
-    res.writeHead(404, { 'Content-Type': 'text/plain' });
-    res.end('Not found: ' + parsed.pathname);
+    res.writeHead(404, {'Content-Type':'text/plain'});
+    res.end('Not found: ' + reqUrl.pathname);
   }
 });
 
 server.listen(PORT, () => {
-  console.log(`\n🚀 Uptracker dev server running at http://localhost:${PORT}`);
-  console.log(`   Cloudflare API proxy: http://localhost:${PORT}/cf-proxy?path=/zones/...`);
+  console.log(`\n🚀 Uptracker dev server → http://localhost:${PORT}`);
+  console.log(`   CF proxy: POST /cf-proxy  {path, token, method, body}`);
   console.log(`   Press Ctrl+C to stop\n`);
 });
