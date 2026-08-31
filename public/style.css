@@ -621,19 +621,20 @@ body { font-family: var(--font); background: var(--bg); color: var(--text);
   box-shadow: 0 0 0 3px rgba(110,231,183,.18);
 }
 
-/* Master PIN extra digits (5th & 6th) — narrower, slightly muted */
+/* Master PIN extra digits (5th & 6th) — slightly smaller, distinct style */
 .pin-digit-extra {
   width: 44px;
   height: 52px;
   font-size: 18px;
   border-style: dashed;
-  opacity: .55;
-  border-color: var(--border);
+  border-color: rgba(59,130,246,.4);
+  opacity: .7;
 }
 
 .pin-digit-extra.active-extra {
   opacity: 1;
   border-style: solid;
+  border-color: var(--blue);
 }
 
 /* ── ERROR STATE ─────────────────────────── */

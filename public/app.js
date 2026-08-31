@@ -885,6 +885,12 @@ function openVerifyPin(siteId, action) {
 
   clearPinBox('verifyPinDigits');
   document.getElementById('verifyPinError').textContent = '';
+
+  // Make extra slots fully visible — master PIN always available
+  document.querySelectorAll('#verifyPinDigits .pin-digit-extra').forEach(d => {
+    d.classList.add('active-extra');
+  });
+
   document.getElementById('verifyPinOverlay').classList.add('active');
   setTimeout(() => document.querySelector('#verifyPinDigits .pin-digit')?.focus(), 120);
 }
@@ -898,8 +904,8 @@ async function handleVerifyPinConfirm() {
   const entered = getPinValue('verifyPinDigits');
   const errEl   = document.getElementById('verifyPinError');
 
-  if (entered.length < 4) {
-    errEl.textContent = 'Enter at least 4 digits.';
+  if (entered.length !== 4 && entered.length !== 6) {
+    errEl.textContent = 'Enter 4-digit site PIN or 6-digit master PIN.';
     shakePinBox('verifyPinDigits');
     return;
   }
@@ -938,6 +944,12 @@ function openChangePinModal(siteId) {
   clearPinBox('newPinDigits');
   clearPinBox('confirmNewPinDigits');
   document.getElementById('changePinError').textContent = '';
+
+  // Make extra slots (5th & 6th) fully visible — master PIN always available
+  document.querySelectorAll('#oldPinDigits .pin-digit-extra').forEach(d => {
+    d.classList.add('active-extra');
+  });
+
   document.getElementById('changePinOverlay').classList.add('active');
   setTimeout(() => document.querySelector('#oldPinDigits .pin-digit')?.focus(), 120);
 }
@@ -956,9 +968,9 @@ async function handleChangePinConfirm() {
   const site = sites.find(s => s.id === _changePinSiteId);
   if (!site) { closeChangePinModal(); return; }
 
-  // Validate old PIN
-  if (oldPin.length < 4) {
-    errEl.textContent = 'Enter your current PIN (4 or 6 digits).';
+  // Validate old PIN — accept 4 digits (site PIN) or 6 digits (master PIN)
+  if (oldPin.length !== 4 && oldPin.length !== 6) {
+    errEl.textContent = 'Enter 4 digits (site PIN) or 6 digits (master PIN).';
     shakePinBox('oldPinDigits');
     return;
   }
@@ -1099,7 +1111,16 @@ function bindPinEvents() {
   });
 
   // Change PIN
-  initPinBox('oldPinDigits',        { onEnter: () => document.querySelector('#newPinDigits .pin-digit')?.focus() });
+  // Change PIN — old PIN box must support 4 or 6 digits (master)
+  // Don't auto-jump to newPin on Enter — let user finish typing 6 digits if needed
+  initPinBox('oldPinDigits', {
+    onEnter: () => {
+      const val = getPinValue('oldPinDigits');
+      if (val.length >= 4) {
+        document.querySelector('#newPinDigits .pin-digit')?.focus();
+      }
+    }
+  });
   initPinBox('newPinDigits',        { onEnter: () => document.querySelector('#confirmNewPinDigits .pin-digit')?.focus() });
   initPinBox('confirmNewPinDigits', { onEnter: handleChangePinConfirm });
   document.getElementById('changePinConfirm').addEventListener('click', handleChangePinConfirm);
