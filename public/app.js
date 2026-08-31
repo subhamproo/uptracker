@@ -88,20 +88,41 @@ function lsSave() {
 async function gistSave(payload) {
   const { GIST_ID, GIST_FILE, GITHUB_TOKEN } = window.UPTRACKER_CONFIG || {};
   if (!useGist) { lsSave(); return; }
+
+  const isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+
   try {
-    await fetch(`https://api.github.com/gists/${GIST_ID}`, {
-      method: 'PATCH',
-      headers: {
-        'Authorization': `token ${GITHUB_TOKEN}`,
-        'Content-Type': 'application/json',
-        'Accept': 'application/vnd.github.v3+json',
-      },
-      body: JSON.stringify({
-        files: { [GIST_FILE]: { content: JSON.stringify(payload, null, 2) } },
-      }),
-    });
-  } catch(e) { console.warn('Gist save:', e.message); }
-  lsSave();
+    if (isLocal) {
+      // Route through local server proxy (avoids any CORS / token exposure issues)
+      const res = await fetch('/gist-proxy-write', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ token: GITHUB_TOKEN, gistId: GIST_ID, gistFile: GIST_FILE, content: payload }),
+      });
+      if (!res.ok) throw new Error(`Proxy write ${res.status}`);
+    } else {
+      // On Netlify — direct browser→GitHub PATCH (CORS allowed by GitHub)
+      const res = await fetch(`https://api.github.com/gists/${GIST_ID}`, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `token ${GITHUB_TOKEN}`,
+          'Content-Type':  'application/json',
+          'Accept':        'application/vnd.github.v3+json',
+        },
+        body: JSON.stringify({
+          files: { [GIST_FILE]: { content: JSON.stringify(payload, null, 2) } },
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.text();
+        throw new Error(`GitHub ${res.status}: ${err.slice(0, 100)}`);
+      }
+    }
+  } catch(e) {
+    console.error('Gist save failed:', e.message);
+    showToast('Save failed — check console', 'down', '⚠️');
+  }
+  lsSave(); // always mirror to localStorage as backup
 }
 
 function buildPayload() {

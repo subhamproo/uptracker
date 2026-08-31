@@ -155,7 +155,53 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // ── Static files ─────────────────────────────
+  // ── /gist-proxy-write — GitHub Gist PATCH proxy ────────────────────
+  if (reqUrl.pathname === '/gist-proxy-write') {
+    let ghToken, gistId, gistFile, content;
+    try {
+      const raw    = await readBody(req);
+      const parsed = JSON.parse(raw);
+      ghToken  = parsed.token;
+      gistId   = parsed.gistId;
+      gistFile = parsed.gistFile || 'uptracker_data.json';
+      content  = parsed.content;
+    } catch {
+      res.writeHead(400, {'Content-Type':'application/json'});
+      res.end(JSON.stringify({error:'Invalid JSON'}));
+      return;
+    }
+
+    if (!ghToken || !gistId || !content) {
+      res.writeHead(400, {'Content-Type':'application/json'});
+      res.end(JSON.stringify({error:'Missing token, gistId or content'}));
+      return;
+    }
+
+    const body = JSON.stringify({
+      files: { [gistFile]: { content: JSON.stringify(content, null, 2) } },
+    });
+
+    try {
+      const result = await httpsRequest({
+        hostname: 'api.github.com',
+        path:     `/gists/${gistId}`,
+        method:   'PATCH',
+        headers: {
+          'Authorization': `token ${ghToken}`,
+          'Content-Type':  'application/json',
+          'Accept':        'application/vnd.github.v3+json',
+          'User-Agent':    'Uptracker-DevServer/1.0',
+          'Content-Length': Buffer.byteLength(body),
+        },
+      }, body);
+      res.writeHead(result.status === 200 ? 200 : result.status, {'Content-Type':'application/json'});
+      res.end(JSON.stringify({ ok: result.status === 200 }));
+    } catch(e) {
+      res.writeHead(500, {'Content-Type':'application/json'});
+      res.end(JSON.stringify({error: e.message}));
+    }
+    return;
+  }
   const filePath = path.join(__dirname, 'public',
     reqUrl.pathname === '/' ? 'index.html' : reqUrl.pathname);
 
