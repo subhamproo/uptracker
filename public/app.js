@@ -705,6 +705,37 @@ function bindEvents() {
   bindPinEvents();
 }
 
+// ── CLOUDFLARE API HELPER ─────────────────────
+// On localhost: routes through /cf-proxy to avoid CORS
+// On production: calls Cloudflare API directly (server-side in monitor.js handles real failover)
+async function cfApiFetch(path, token, options = {}) {
+  const isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+  if (isLocal) {
+    // Use local dev proxy
+    const res = await fetch(`/cf-proxy?path=${encodeURIComponent(path)}`, {
+      ...options,
+      headers: {
+        'Content-Type':  'application/json',
+        'x-cf-token':    token,
+        ...(options.headers || {}),
+      },
+    });
+    return res.json();
+  } else {
+    // Direct call — works from server context but not browser (CORS)
+    // On production this function is only used for Test Connection UI validation
+    const res = await fetch(`https://api.cloudflare.com/client/v4${path}`, {
+      ...options,
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type':  'application/json',
+        ...(options.headers || {}),
+      },
+    });
+    return res.json();
+  }
+}
+
 // ── CLOUDFLARE TEST ───────────────────────────
 async function handleCfTest() {
   const token    = document.getElementById('cfApiToken')?.value.trim();
@@ -721,13 +752,11 @@ async function handleCfTest() {
   btn.disabled = true; btn.textContent = 'Testing…'; errEl.textContent = '';
 
   try {
-    const res = await fetch(`https://api.cloudflare.com/client/v4/zones/${zoneId}/dns_records/${recordId}`, {
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    });
-    const data = await res.json();
+    const data = await cfApiFetch(`/zones/${zoneId}/dns_records/${recordId}`, token);
+
     if (data.success) {
       const rec = data.result;
-      // Auto-fill original content if empty
+      // Auto-fill fields from live record
       const origInput = document.getElementById('cfOriginalContent');
       if (origInput && !origInput.value) origInput.value = rec.content;
       const nameInput = document.getElementById('cfRecordName');
@@ -736,8 +765,8 @@ async function handleCfTest() {
       if (typeInput) typeInput.value = rec.type;
 
       errEl.style.color = 'var(--up)';
-      errEl.textContent = `✅ Connected! Record: ${rec.type} ${rec.name} → ${rec.content}`;
-      setTimeout(() => { errEl.textContent = ''; errEl.style.color = ''; }, 5000);
+      errEl.textContent = `✅ Connected! ${rec.type} ${rec.name} → ${rec.content} (proxied: ${rec.proxied})`;
+      setTimeout(() => { errEl.textContent = ''; errEl.style.color = ''; }, 6000);
       showToast('Cloudflare connection verified ✅', 'up', '☁️');
     } else {
       errEl.textContent = `❌ CF Error: ${data.errors?.[0]?.message || 'Unknown error'}`;
