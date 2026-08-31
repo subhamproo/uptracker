@@ -5,190 +5,245 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Under Maintenance</title>
   <meta name="robots" content="noindex, nofollow" />
-  <meta name="theme-color" content="#070b17" />
-
-  <!-- Fonts -->
+  <meta name="theme-color" content="#060b18" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
-
-  <!-- Styles -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,300&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="maintenance.css" />
-
-  <!-- Config (GitHub token for live status polling) -->
   <script src="config.js" onerror="void 0"></script>
 </head>
 <body>
 
-  <!-- ═══════════════════════════════════
-       CANVAS BACKGROUND EFFECTS
-       ═══════════════════════════════════ -->
+  <!-- BG Layers -->
+  <div class="bg-grid"></div>
+  <div class="bg-glow" id="bgGlow"></div>
   <canvas id="bgCanvas"></canvas>
+  <div class="noise"></div>
 
-  <!-- ═══════════════════════════════════
-       FLOATING PARTICLES
-       ═══════════════════════════════════ -->
-  <div class="particles" id="particles"></div>
+  <!-- Particles -->
+  <div id="particles"></div>
 
-  <!-- ═══════════════════════════════════
-       MAIN LAYOUT
-       ═══════════════════════════════════ -->
-  <div class="layout">
+  <!-- HEADER -->
+  <header class="site-header">
+    <div class="site-brand" id="siteBrand">
+      <div class="brand-avatar" id="brandAvatar">
+        <img id="brandFavicon" src="" alt="" />
+        <span id="brandInitial">?</span>
+      </div>
+      <div>
+        <div class="brand-name" id="brandName">Loading…</div>
+        <div class="brand-domain" id="brandDomain"></div>
+      </div>
+    </div>
 
-    <!-- LEFT SIDE -->
-    <div class="left-panel">
+    <div class="header-center">
+      <div class="live-badge">
+        <span class="live-dot"></span>
+        LIVE MONITORING
+      </div>
+    </div>
 
-      <!-- Logo / Branding -->
-      <div class="brand" id="brand">
-        <div class="brand-logo" id="brandLogo">
-          <img id="faviconImg" src="" alt="" />
-          <span id="faviconFallback" class="brand-fallback">🌐</span>
-        </div>
-        <div class="brand-text">
-          <h1 class="brand-name" id="brandName">Loading…</h1>
-          <span class="brand-url" id="brandUrl"></span>
-        </div>
+    <div class="header-right">
+      <div class="poll-chip" id="pollChip">
+        <span class="poll-spinner" id="pollSpinner"></span>
+        <span id="pollChipText">Connecting…</span>
+      </div>
+      <a href="#" id="visitBtn" class="visit-btn">
+        Visit site
+        <svg viewBox="0 0 16 16" fill="none"><path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </a>
+    </div>
+  </header>
+
+  <!-- MAIN -->
+  <main class="main-grid">
+
+    <!-- ═══════════ LEFT ═══════════ -->
+    <section class="col-left">
+
+      <!-- Status badge -->
+      <div class="status-badge" id="statusBadge">
+        <span class="status-badge-dot" id="statusBadgeDot"></span>
+        <span id="statusBadgeText">Checking status…</span>
+        <span class="status-badge-since" id="statusBadgeSince"></span>
       </div>
 
-      <!-- Status Badge -->
-      <div class="status-pill" id="statusPill">
-        <span class="status-pill-dot" id="pillDot"></span>
-        <span class="status-pill-text" id="pillText">Checking…</span>
-      </div>
-
-      <!-- Main Headline -->
-      <div class="headline-wrap">
-        <h2 class="headline" id="headline">We'll be right<br/><span class="headline-accent">back.</span></h2>
-        <p class="headline-sub" id="headlineSub">
-          We're performing scheduled maintenance to improve your experience.
-          Our team is working hard to bring things back online.
+      <!-- Main copy -->
+      <div class="copy-block">
+        <h1 class="copy-headline" id="copyHeadline">
+          We'll be<br/>right back<span class="cursor-blink">_</span>
+        </h1>
+        <p class="copy-sub" id="copySub">
+          We're performing scheduled maintenance on <strong id="copySiteName">this service</strong>.
+          Our team is actively working to restore full functionality as quickly as possible.
         </p>
       </div>
 
-      <!-- Metrics Row -->
-      <div class="metrics-row">
-        <div class="metric-item">
-          <span class="metric-val" id="mUptime">—</span>
-          <span class="metric-lbl">Uptime</span>
-          <div class="metric-bar-wrap">
-            <div class="metric-bar" id="mUptimeBar"></div>
+      <!-- Live status card -->
+      <div class="status-card" id="statusCard">
+        <div class="status-card-header">
+          <span class="sc-label">Live Status</span>
+          <span class="sc-time" id="scTime">—</span>
+        </div>
+        <div class="status-indicator" id="statusIndicator">
+          <div class="si-dot" id="siDot"></div>
+          <div class="si-text">
+            <span class="si-state" id="siState">Checking…</span>
+            <span class="si-detail" id="siDetail">Connecting to monitoring server</span>
+          </div>
+          <div class="si-ms" id="siMs">—</div>
+        </div>
+      </div>
+
+      <!-- Metrics Grid -->
+      <div class="metrics-grid">
+        <div class="metric-card" id="mc-uptime">
+          <div class="mc-icon">📊</div>
+          <div class="mc-body">
+            <div class="mc-val" id="mcUptime">—</div>
+            <div class="mc-label">Overall Uptime</div>
+          </div>
+          <div class="mc-bar-track">
+            <div class="mc-bar-fill" id="mcUptimeBar"></div>
           </div>
         </div>
-        <div class="metric-divider"></div>
-        <div class="metric-item">
-          <span class="metric-val" id="mResponse">—</span>
-          <span class="metric-lbl">Last Response</span>
-          <div class="metric-tag" id="mResponseTag"></div>
+        <div class="metric-card" id="mc-response">
+          <div class="mc-icon">⚡</div>
+          <div class="mc-body">
+            <div class="mc-val" id="mcResponse">—</div>
+            <div class="mc-label">Last Response</div>
+          </div>
+          <div class="mc-tag" id="mcResponseTag"></div>
         </div>
-        <div class="metric-divider"></div>
-        <div class="metric-item">
-          <span class="metric-val" id="mChecked">—</span>
-          <span class="metric-lbl">Last Checked</span>
-          <div class="metric-tag dim">Server</div>
+        <div class="metric-card" id="mc-outages">
+          <div class="mc-icon">🚨</div>
+          <div class="mc-body">
+            <div class="mc-val" id="mcOutages">—</div>
+            <div class="mc-label">Total Outages</div>
+          </div>
         </div>
-      </div>
-
-      <!-- Uptime Sparkline -->
-      <div class="spark-section">
-        <div class="spark-header">
-          <span class="spark-label">Response History</span>
-          <span class="spark-legend">
-            <span class="dot green"></span>Fast
-            <span class="dot yellow"></span>Slow
-            <span class="dot red"></span>Down
-          </span>
-        </div>
-        <div class="sparkline" id="sparkline"></div>
-      </div>
-
-      <!-- CTA Footer -->
-      <div class="cta-row">
-        <a href="#" id="visitLink" class="btn-ghost">
-          <svg viewBox="0 0 20 20" fill="none"><path d="M11 3h6v6M17 3l-8 8M8 5H4a1 1 0 00-1 1v10a1 1 0 001 1h10a1 1 0 001-1v-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          Visit site anyway
-        </a>
-        <div class="poll-indicator">
-          <span class="poll-dot" id="pollDot"></span>
-          <span class="poll-label" id="pollLabel">Checking every 30s</span>
-        </div>
-      </div>
-
-    </div>
-
-    <!-- RIGHT SIDE -->
-    <div class="right-panel">
-
-      <!-- Big status icon -->
-      <div class="status-icon-wrap" id="statusIconWrap">
-        <div class="status-icon-ring ring-1"></div>
-        <div class="status-icon-ring ring-2"></div>
-        <div class="status-icon-ring ring-3"></div>
-        <div class="status-icon-core" id="statusIconCore">
-          <span class="status-emoji" id="statusEmoji">🔧</span>
-        </div>
-      </div>
-
-      <!-- Progress Bar (uptime) -->
-      <div class="progress-card" id="progressCard">
-        <div class="progress-card-header">
-          <span class="progress-card-title">Service Uptime</span>
-          <span class="progress-card-pct" id="progressPct">—</span>
-        </div>
-        <div class="progress-track">
-          <div class="progress-fill" id="progressFill"></div>
-          <div class="progress-glow" id="progressGlow"></div>
-        </div>
-        <div class="progress-labels">
-          <span>0%</span>
-          <span id="progressChecks">Waiting for data</span>
-          <span>100%</span>
-        </div>
-      </div>
-
-      <!-- Incident Timeline -->
-      <div class="timeline-card">
-        <div class="timeline-header">
-          <svg viewBox="0 0 20 20" fill="none"><path d="M10 2a8 8 0 1 0 0 16A8 8 0 0 0 10 2Z" stroke="currentColor" stroke-width="1.4"/><path d="M10 6v4l2.5 2.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
-          Incident Log
-        </div>
-        <div class="timeline" id="timeline">
-          <div class="timeline-empty">
-            <span class="tl-dot dim"></span>
-            <span class="tl-text dim">No recent incidents</span>
+        <div class="metric-card" id="mc-checks">
+          <div class="mc-icon">🔍</div>
+          <div class="mc-body">
+            <div class="mc-val" id="mcChecks">—</div>
+            <div class="mc-label">Total Checks</div>
           </div>
         </div>
       </div>
 
-      <!-- Recovery Notice (hidden until site recovers) -->
-      <div class="recovery-card" id="recoveryCard" style="display:none">
-        <div class="recovery-icon">✅</div>
-        <div class="recovery-text">
-          <div class="recovery-title">Site is back online!</div>
-          <div class="recovery-sub">Redirecting you in <strong id="countdownNum">5</strong>s</div>
+      <!-- Sparkline -->
+      <div class="spark-card">
+        <div class="spark-card-header">
+          <span class="spark-card-title">Response History <span class="spark-count" id="sparkCount"></span></span>
+          <div class="spark-legend">
+            <span class="sl-item"><span class="sl-dot green"></span>Fast</span>
+            <span class="sl-item"><span class="sl-dot yellow"></span>Slow</span>
+            <span class="sl-item"><span class="sl-dot red"></span>Down</span>
+          </div>
         </div>
-        <div class="recovery-ring" id="recoveryRing">
-          <svg class="recovery-svg" viewBox="0 0 44 44">
-            <circle cx="22" cy="22" r="19" fill="none" stroke="rgba(16,185,129,0.15)" stroke-width="3"/>
-            <circle cx="22" cy="22" r="19" fill="none" stroke="#10b981" stroke-width="3"
-              stroke-dasharray="119.4" stroke-dashoffset="119.4"
-              stroke-linecap="round" id="recoveryCircle"
-              transform="rotate(-90 22 22)"/>
+        <div class="sparkline-wrap" id="sparklineWrap"></div>
+        <div class="spark-axis">
+          <span id="sparkOldest">—</span>
+          <span id="sparkNewest">now</span>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ═══════════ RIGHT ═══════════ -->
+    <section class="col-right">
+
+      <!-- Hero status orb -->
+      <div class="orb-section">
+        <div class="orb-container" id="orbContainer">
+          <div class="orb-ring r4"></div>
+          <div class="orb-ring r3"></div>
+          <div class="orb-ring r2"></div>
+          <div class="orb-ring r1"></div>
+          <div class="orb-core" id="orbCore">
+            <div class="orb-inner" id="orbInner">
+              <span class="orb-emoji" id="orbEmoji">🔧</span>
+            </div>
+          </div>
+          <!-- Rotating scan line -->
+          <div class="orb-scan" id="orbScan"></div>
+        </div>
+        <div class="orb-status-text" id="orbStatusText">Monitoring active</div>
+        <div class="orb-sub-text" id="orbSubText">Uptracker server checks every 60s</div>
+      </div>
+
+      <!-- Progress card -->
+      <div class="prog-card">
+        <div class="prog-header">
+          <div class="prog-title-row">
+            <span class="prog-title">Service Health</span>
+            <span class="prog-score" id="progScore">—</span>
+          </div>
+          <div class="prog-track">
+            <div class="prog-fill" id="progFill"></div>
+            <div class="prog-glow" id="progGlow"></div>
+          </div>
+          <div class="prog-labels">
+            <span class="prog-label-l">Critical</span>
+            <span class="prog-label-c" id="progChecksLabel">Loading…</span>
+            <span class="prog-label-r">Healthy</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Incident timeline -->
+      <div class="incident-card">
+        <div class="incident-header">
+          <div class="incident-title">
+            <svg viewBox="0 0 20 20" fill="none" width="14" height="14"><path d="M10 2a8 8 0 1 0 0 16A8 8 0 0 0 10 2Z" stroke="currentColor" stroke-width="1.4"/><path d="M10 6v4l2.5 2.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+            Incident Timeline
+          </div>
+          <span class="incident-count" id="incidentCount">0 events</span>
+        </div>
+        <div class="incident-list" id="incidentList">
+          <div class="incident-empty">
+            <svg viewBox="0 0 24 24" fill="none" width="24" height="24"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.5" opacity=".3"/><path d="M12 8v4M12 16h.01" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            <span>No incidents recorded</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Recovery notice (hidden) -->
+      <div class="recovery-banner" id="recoveryBanner" style="display:none">
+        <div class="rb-left">
+          <div class="rb-icon">✅</div>
+          <div>
+            <div class="rb-title">Service Restored</div>
+            <div class="rb-sub">Redirecting in <strong id="rbCountdown">5</strong>s</div>
+          </div>
+        </div>
+        <div class="rb-ring">
+          <svg viewBox="0 0 48 48" fill="none" width="48" height="48">
+            <circle cx="24" cy="24" r="20" stroke="rgba(16,185,129,.15)" stroke-width="3"/>
+            <circle cx="24" cy="24" r="20" stroke="#10b981" stroke-width="3"
+              stroke-dasharray="125.7" stroke-dashoffset="125.7"
+              stroke-linecap="round" id="rbCircle"
+              transform="rotate(-90 24 24)"/>
           </svg>
         </div>
       </div>
 
-      <!-- Powered by -->
-      <div class="powered-by">
-        <span>Monitored by</span>
-        <svg viewBox="0 0 32 32" fill="none" width="16" height="16"><circle cx="16" cy="16" r="14" stroke="url(#pg)" stroke-width="2.5"/><path d="M10 16L14 20L22 12" stroke="url(#pg)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><defs><linearGradient id="pg" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse"><stop stop-color="#6EE7B7"/><stop offset="1" stop-color="#3B82F6"/></linearGradient></defs></svg>
-        <span class="powered-name">Uptracker</span>
+      <!-- Footer -->
+      <div class="right-footer">
+        <div class="powered">
+          <svg viewBox="0 0 24 24" fill="none" width="14" height="14"><circle cx="12" cy="12" r="10" stroke="url(#pwg)" stroke-width="1.8"/><path d="M8 12l3 3 5-5" stroke="url(#pwg)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><defs><linearGradient id="pwg" x1="0" y1="0" x2="24" y2="24" gradientUnits="userSpaceOnUse"><stop stop-color="#6ee7b7"/><stop offset="1" stop-color="#3b82f6"/></linearGradient></defs></svg>
+          Monitored by <span class="powered-name">Uptracker</span>
+        </div>
+        <div class="footer-links">
+          <a href="/" target="_blank">Dashboard</a>
+          <span>·</span>
+          <a href="#" id="footerVisit">Visit site</a>
+        </div>
       </div>
 
-    </div>
+    </section>
+  </main>
 
-  </div>
-
-  <!-- Script -->
   <script src="maintenance.js"></script>
 </body>
 </html>
