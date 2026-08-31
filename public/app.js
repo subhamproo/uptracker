@@ -117,9 +117,21 @@ function siteToJSON(s) {
     interval:    s.interval || 30,
     webhookUrl:  s.webhookUrl || '',
     alertMode:   s.alertMode  || 'offline',
-    pinHash:     s.pinHash    || '',          // ← PIN hash persisted in Gist
+    pinHash:     s.pinHash    || '',
     addedAt:     s.addedAt,
-    // Preserve server-written fields if they exist
+    // Cloudflare DNS Failover fields
+    cfEnabled:          s.cfEnabled          || false,
+    cfApiToken:         s.cfApiToken         || '',
+    cfZoneId:           s.cfZoneId           || '',
+    cfRecordId:         s.cfRecordId         || '',
+    cfRecordName:       s.cfRecordName       || '',
+    cfRecordType:       s.cfRecordType       || 'CNAME',
+    cfOriginalContent:  s.cfOriginalContent  || '',
+    cfOriginalTtl:      s.cfOriginalTtl      || 1,
+    cfProxied:          s.cfProxied          || false,
+    cfMaintenanceUrl:   s.cfMaintenanceUrl   || '',
+    cfFailoverActive:   s.cfFailoverActive   || false,
+    // Server-written fields
     lastStatus:  s.lastStatus  || undefined,
     lastMs:      s.lastMs      || undefined,
     lastCode:    s.lastCode    || undefined,
@@ -139,9 +151,18 @@ function hydrateFromPayload(payload) {
     const lastInc    = (incidents[s.id] || []).at(-1);
     return {
       ...s,
-      webhookUrl: s.webhookUrl || '',
-      alertMode:  s.alertMode  || 'offline',
-      pinHash:    s.pinHash    || '',          // ← preserve PIN hash
+      webhookUrl:         s.webhookUrl        || '',
+      alertMode:          s.alertMode         || 'offline',
+      pinHash:            s.pinHash           || '',
+      cfEnabled:          s.cfEnabled         || false,
+      cfApiToken:         s.cfApiToken        || '',
+      cfZoneId:           s.cfZoneId          || '',
+      cfRecordId:         s.cfRecordId        || '',
+      cfRecordName:       s.cfRecordName      || '',
+      cfRecordType:       s.cfRecordType      || 'CNAME',
+      cfOriginalContent:  s.cfOriginalContent || '',
+      cfMaintenanceUrl:   s.cfMaintenanceUrl  || '',
+      cfFailoverActive:   s.cfFailoverActive  || false,
       history:    siteChecks,
       uptimePct:  calcUptimePct(siteChecks),
       status:     s.lastStatus || lastInc?.status || 'checking',
@@ -281,6 +302,12 @@ function buildCardHTML(site) {
         ${site.alertMode === 'both' ? 'Online &amp; Offline' : 'Offline only'}</span>`
     : '';
 
+  const cfBadge = site.cfEnabled
+    ? `<span class="cf-card-badge ${site.cfFailoverActive ? 'active' : ''}" title="${site.cfFailoverActive ? 'DNS Failover ACTIVE — on maintenance page' : 'DNS Failover ready'}">
+        ☁ ${site.cfFailoverActive ? 'Failover ON' : 'Failover'}
+       </span>`
+    : '';
+
   return `
   <div class="site-card status-${site.status}" id="card-${site.id}">
     <div class="card-header">
@@ -346,6 +373,7 @@ function buildCardHTML(site) {
       <div class="footer-meta">${serverBadge} ${lockBadge} ${totalChecks} checks · every ${site.interval}s ${totalInc > 0 ? `· <span class="incident-count">${totalInc} outage${totalInc>1?'s':''}</span>` : ''}</div>
       <div class="footer-right">
         ${discordBadge}
+        ${cfBadge}
         <button class="view-log-btn" onclick="openLogPanel('${site.id}')">
           <svg viewBox="0 0 20 20" fill="none"><path d="M3 5h14M3 10h14M3 15h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
           History
@@ -538,20 +566,42 @@ function openEditModal(siteId) {
 function closeEditModal() { document.getElementById('editModalOverlay').classList.remove('active'); }
 
 async function handleSaveEdit() {
-  const id       = document.getElementById('editSiteId').value;
-  const name     = document.getElementById('editSiteName').value.trim();
-  const url      = document.getElementById('editSiteUrl').value.trim();
-  const interval = parseInt(document.getElementById('editCheckInterval').value);
-  const webhook  = document.getElementById('editWebhookUrl').value.trim();
-  const alertMode = document.querySelector('input[name="alertMode"]:checked')?.value||'offline';
-  const errEl    = document.getElementById('editModalError');
-  if (!name) { errEl.textContent='Enter a site name.'; return; }
-  if (!url)  { errEl.textContent='Enter a URL.'; return; }
-  if (webhook && !webhook.includes('discord.com/api/webhooks/')) { errEl.textContent='Must be a Discord webhook URL.'; return; }
+  const id        = document.getElementById('editSiteId').value;
+  const name      = document.getElementById('editSiteName').value.trim();
+  const url       = document.getElementById('editSiteUrl').value.trim();
+  const interval  = parseInt(document.getElementById('editCheckInterval').value);
+  const webhook   = document.getElementById('editWebhookUrl').value.trim();
+  const alertMode = document.querySelector('input[name="alertMode"]:checked')?.value || 'offline';
+  const errEl     = document.getElementById('editModalError');
+
+  // Cloudflare fields
+  const cfEnabled         = document.getElementById('cfEnabled')?.checked         || false;
+  const cfApiToken        = document.getElementById('cfApiToken')?.value.trim()   || '';
+  const cfZoneId          = document.getElementById('cfZoneId')?.value.trim()     || '';
+  const cfRecordId        = document.getElementById('cfRecordId')?.value.trim()   || '';
+  const cfRecordName      = document.getElementById('cfRecordName')?.value.trim() || '';
+  const cfRecordType      = document.getElementById('cfRecordType')?.value        || 'CNAME';
+  const cfOriginalContent = document.getElementById('cfOriginalContent')?.value.trim() || '';
+  const cfMaintenanceUrl  = document.getElementById('cfMaintenanceUrl')?.value.trim() || '';
+
+  if (!name) { errEl.textContent = 'Enter a site name.'; return; }
+  if (!url)  { errEl.textContent = 'Enter a URL.'; return; }
+  if (webhook && !webhook.includes('discord.com/api/webhooks/')) { errEl.textContent = 'Must be a Discord webhook URL.'; return; }
+  if (cfEnabled && (!cfApiToken || !cfZoneId || !cfRecordId || !cfRecordName)) {
+    errEl.textContent = 'Cloudflare failover requires API Token, Zone ID, Record ID and Record Name.';
+    return;
+  }
+
   const btn = document.getElementById('editModalSaveBtn');
-  btn.disabled=true; btn.textContent='Saving…';
-  await updateSite(id, { name, url: normalizeUrl(url), interval, webhookUrl: webhook, alertMode });
-  btn.disabled=false; btn.textContent='Save Changes';
+  btn.disabled = true; btn.textContent = 'Saving…';
+
+  await updateSite(id, {
+    name, url: normalizeUrl(url), interval, webhookUrl: webhook, alertMode,
+    cfEnabled, cfApiToken, cfZoneId, cfRecordId, cfRecordName,
+    cfRecordType, cfOriginalContent, cfMaintenanceUrl,
+  });
+
+  btn.disabled = false; btn.textContent = 'Save Changes';
   closeEditModal();
   showToast(`${name} updated`, 'info', '✏️');
   renderAll();
@@ -622,6 +672,13 @@ function bindEvents() {
   document.getElementById('editModalCancelBtn').addEventListener('click', closeEditModal);
   document.getElementById('editModalSaveBtn').addEventListener('click', handleSaveEdit);
   document.getElementById('testWebhookBtn').addEventListener('click', handleTestWebhook);
+
+  // Cloudflare toggle
+  document.getElementById('cfEnabled')?.addEventListener('change', (e) => {
+    toggleCfFields(e.target.checked);
+  });
+  // CF test connection button
+  document.getElementById('cfTestBtn')?.addEventListener('click', handleCfTest);
   document.getElementById('modalOverlay').addEventListener('click', e=>{if(e.target===e.currentTarget)closeAddModal();});
   document.getElementById('editModalOverlay').addEventListener('click', e=>{if(e.target===e.currentTarget)closeEditModal();});
   document.getElementById('siteUrl').addEventListener('keydown', e=>{if(e.key==='Enter')handleAddSite();});
@@ -643,6 +700,50 @@ function bindEvents() {
 
   // Init PIN system
   bindPinEvents();
+}
+
+// ── CLOUDFLARE TEST ───────────────────────────
+async function handleCfTest() {
+  const token    = document.getElementById('cfApiToken')?.value.trim();
+  const zoneId   = document.getElementById('cfZoneId')?.value.trim();
+  const recordId = document.getElementById('cfRecordId')?.value.trim();
+  const errEl    = document.getElementById('editModalError');
+  const btn      = document.getElementById('cfTestBtn');
+
+  if (!token || !zoneId || !recordId) {
+    errEl.textContent = 'Fill in API Token, Zone ID and Record ID to test.';
+    return;
+  }
+
+  btn.disabled = true; btn.textContent = 'Testing…'; errEl.textContent = '';
+
+  try {
+    const res = await fetch(`https://api.cloudflare.com/client/v4/zones/${zoneId}/dns_records/${recordId}`, {
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    });
+    const data = await res.json();
+    if (data.success) {
+      const rec = data.result;
+      // Auto-fill original content if empty
+      const origInput = document.getElementById('cfOriginalContent');
+      if (origInput && !origInput.value) origInput.value = rec.content;
+      const nameInput = document.getElementById('cfRecordName');
+      if (nameInput && !nameInput.value) nameInput.value = rec.name;
+      const typeInput = document.getElementById('cfRecordType');
+      if (typeInput) typeInput.value = rec.type;
+
+      errEl.style.color = 'var(--up)';
+      errEl.textContent = `✅ Connected! Record: ${rec.type} ${rec.name} → ${rec.content}`;
+      setTimeout(() => { errEl.textContent = ''; errEl.style.color = ''; }, 5000);
+      showToast('Cloudflare connection verified ✅', 'up', '☁️');
+    } else {
+      errEl.textContent = `❌ CF Error: ${data.errors?.[0]?.message || 'Unknown error'}`;
+    }
+  } catch(e) {
+    errEl.textContent = `❌ Request failed: ${e.message}`;
+  }
+
+  btn.disabled = false; btn.textContent = 'Test Connection';
 }
 
 // ── TOAST ────────────────────────────────────
@@ -1073,11 +1174,25 @@ function _doOpenEditModal(siteId) {
   const mode = site.alertMode || 'offline';
   document.querySelector(`input[name="alertMode"][value="${mode}"]`).checked = true;
 
-  // Inject "Change PIN" row into edit modal footer area (once)
+  // Populate Cloudflare fields
+  document.getElementById('cfEnabled').checked           = !!site.cfEnabled;
+  document.getElementById('cfApiToken').value            = site.cfApiToken        || '';
+  document.getElementById('cfZoneId').value              = site.cfZoneId          || '';
+  document.getElementById('cfRecordId').value            = site.cfRecordId        || '';
+  document.getElementById('cfRecordName').value          = site.cfRecordName      || '';
+  document.getElementById('cfRecordType').value          = site.cfRecordType      || 'CNAME';
+  document.getElementById('cfOriginalContent').value     = site.cfOriginalContent || '';
+  document.getElementById('cfMaintenanceUrl').value      = site.cfMaintenanceUrl  || '';
+  // Show/hide CF fields based on toggle
+  toggleCfFields(!!site.cfEnabled);
+  // Show CF status if active
+  updateCfStatusRow(site);
+
+  // Inject "Change PIN" row into edit modal (once)
   const existing = document.getElementById('changePinRow');
   if (!existing) {
-    const webhookSection = document.querySelector('#editModal .webhook-section');
-    if (webhookSection) {
+    const cfSec = document.getElementById('cfSection');
+    if (cfSec) {
       const row = document.createElement('div');
       row.id        = 'changePinRow';
       row.className = 'change-pin-row';
@@ -1087,7 +1202,7 @@ function _doOpenEditModal(siteId) {
           <span>Site PIN is active</span>
         </div>
         <button class="change-pin-btn" id="changePinTrigger">Change PIN</button>`;
-      webhookSection.insertAdjacentElement('afterend', row);
+      cfSec.insertAdjacentElement('afterend', row);
       document.getElementById('changePinTrigger').addEventListener('click', () => {
         const id = document.getElementById('editSiteId').value;
         closeEditModal();
@@ -1098,6 +1213,30 @@ function _doOpenEditModal(siteId) {
 
   document.getElementById('editModalOverlay').classList.add('active');
   setTimeout(() => document.getElementById('editSiteName')?.focus(), 100);
+}
+
+function toggleCfFields(enabled) {
+  const fields = document.getElementById('cfFields');
+  if (fields) fields.style.display = enabled ? 'flex' : 'none';
+}
+
+function updateCfStatusRow(site) {
+  const row = document.getElementById('cfStatusRow');
+  const ind = document.getElementById('cfStatusIndicator');
+  const txt = document.getElementById('cfStatusText');
+  if (!row) return;
+  if (site.cfEnabled && site.cfZoneId && site.cfRecordId) {
+    row.style.display = 'flex';
+    if (site.cfFailoverActive) {
+      ind.className = 'cf-status-indicator down';
+      txt.textContent = '🔄 Failover active — DNS pointing to maintenance page';
+    } else {
+      ind.className = 'cf-status-indicator up';
+      txt.textContent = '✅ Normal — DNS pointing to your server';
+    }
+  } else {
+    row.style.display = 'none';
+  }
 }
 
 async function _doRemoveSite(id) {

@@ -251,6 +251,78 @@
           </button>
         </div>
 
+        <!-- Cloudflare DNS Failover Section -->
+        <div class="cf-section" id="cfSection">
+          <div class="cf-section-header">
+            <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M13.5 2C13.5 2 15 7 12 10c-2.5 2.5-7 2-7 2s1.5 5 6.5 6c4.5.9 8.5-2 8.5-6 0-5.5-6.5-10-6.5-10z" opacity=".6"/><path d="M9 15.5S7 14 6.5 11.5C5.5 13 5 14.5 5 16c0 3.3 2.7 6 6 6s6-2.7 6-6c0-1.2-.4-2.3-1-3.2C15 15 12 16.5 9 15.5z"/></svg>
+            <span>Cloudflare DNS Failover</span>
+            <span class="cf-badge-free">FREE</span>
+            <label class="cf-toggle-label">
+              <input type="checkbox" id="cfEnabled" />
+              <span class="cf-toggle-track"><span class="cf-toggle-thumb"></span></span>
+            </label>
+          </div>
+          <p class="cf-section-desc">When your site goes <strong>offline</strong>, Uptracker automatically switches your DNS to show a maintenance page. When it recovers, DNS is restored. Requires Cloudflare DNS (free).</p>
+
+          <div class="cf-fields" id="cfFields">
+            <div class="form-group">
+              <label for="cfApiToken">
+                API Token
+                <a href="https://dash.cloudflare.com/profile/api-tokens" target="_blank" rel="noopener" class="cf-help-link">Get token →</a>
+              </label>
+              <input type="password" id="cfApiToken" placeholder="Cloudflare API token (Edit DNS permission)" autocomplete="off" />
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="cfZoneId">
+                  Zone ID
+                  <a href="#" class="cf-help-link" onclick="return false" title="Found in Cloudflare dashboard → your domain → Overview → Zone ID (bottom right)">?</a>
+                </label>
+                <input type="text" id="cfZoneId" placeholder="a1b2c3d4e5f6..." autocomplete="off" />
+              </div>
+              <div class="form-group">
+                <label for="cfRecordId">
+                  DNS Record ID
+                  <a href="#" class="cf-help-link" onclick="return false" title="Run: GET https://api.cloudflare.com/client/v4/zones/{zone_id}/dns_records to find the record ID for your domain">?</a>
+                </label>
+                <input type="text" id="cfRecordId" placeholder="abc123def456..." autocomplete="off" />
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="cfRecordName">Record Name</label>
+                <input type="text" id="cfRecordName" placeholder="roiprofitacademy.in" autocomplete="off" />
+              </div>
+              <div class="form-group">
+                <label for="cfRecordType">Record Type</label>
+                <select id="cfRecordType">
+                  <option value="CNAME">CNAME</option>
+                  <option value="A">A Record</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="cfOriginalContent">Original DNS Value <span class="label-optional">auto-detected on first check</span></label>
+              <input type="text" id="cfOriginalContent" placeholder="your-hosting-provider.com or IP" autocomplete="off" />
+            </div>
+
+            <div class="form-group">
+              <label for="cfMaintenanceUrl">Maintenance Page URL <span class="label-optional">optional</span></label>
+              <input type="url" id="cfMaintenanceUrl" placeholder="https://uptimetracker.netlify.app/maintenance" autocomplete="off" />
+              <span class="cf-field-hint">Leave blank to use our hosted maintenance page (recommended)</span>
+            </div>
+
+            <div class="cf-status-row" id="cfStatusRow" style="display:none">
+              <div class="cf-status-indicator" id="cfStatusIndicator"></div>
+              <span id="cfStatusText">Checking…</span>
+              <button class="btn btn-ghost btn-sm" id="cfTestBtn" type="button">Test Connection</button>
+            </div>
+          </div>
+        </div>
+
         <div class="modal-error" id="editModalError"></div>
       </div>
       <div class="modal-footer">

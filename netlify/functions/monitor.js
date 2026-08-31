@@ -2,9 +2,13 @@
  * UPTRACKER — Server-Side Monitor (Netlify Scheduled Function)
  * Runs every 1 minute on Netlify's servers, 24/7
  *
- * ALERT LOGIC:
- * - alertMode 'offline' → Discord only when site status changes to DOWN
- * - alertMode 'both'    → Discord on EVERY check (online every 60s + instant offline)
+ * FEATURES:
+ * - Site health checks (HEAD request, 10s timeout)
+ * - GitHub Gist persistence (checks, incidents, site state)
+ * - Discord alerts (offline-only or every-check heartbeat)
+ * - Cloudflare DNS Failover (free plan API)
+ *   → On DOWN: switches DNS CNAME to maintenance page URL
+ *   → On UP:   restores DNS CNAME to original value
  */
 
 'use strict';
@@ -18,10 +22,13 @@ const GITHUB_TOKEN  = process.env.GITHUB_TOKEN;
 const GIST_ID       = process.env.GIST_ID;
 const GIST_FILE     = 'uptracker_data.json';
 const CHECK_TIMEOUT = 10000;
-const MAX_CHECKS    = 5000;  // ~83 hours at 1/min
+const MAX_CHECKS    = 5000;
 const MAX_INCIDENTS = 5000;
 
-// ── HANDLER ──────────────────────────────────
+// Maintenance page base URL — where Cloudflare will redirect traffic when site is down
+const MAINTENANCE_BASE = 'uptimetracker.netlify.app';
+
+// ── HANDLER ──────────────────────────────────────────────────────────
 const handler = async () => {
   if (!GITHUB_TOKEN || !GIST_ID) {
     console.error('[Uptracker] Missing GITHUB_TOKEN or GIST_ID');
@@ -37,10 +44,8 @@ const handler = async () => {
   data.checks    = data.checks    || {};
   data.incidents = data.incidents || {};
 
-  // Run checks in parallel
   const results = await Promise.allSettled(sites.map(checkSite));
-
-  const log = [];
+  const log     = [];
 
   for (let i = 0; i < results.length; i++) {
     const site = sites[i];
@@ -56,16 +61,15 @@ const handler = async () => {
     data.checks[id]    = data.checks[id]    || [];
     data.incidents[id] = data.incidents[id] || [];
 
-    // ── Store check ──────────────────────────
+    // ── Store check result ────────────────────────────
     data.checks[id].push({ ts: Date.now(), status, ms });
     if (data.checks[id].length > MAX_CHECKS) data.checks[id].shift();
 
-    // ── Determine previous status ────────────
-    // Use site.lastStatus (persisted from last run) as source of truth
-    const prevStatus = site.lastStatus || null;
+    // ── Detect status change ──────────────────────────
+    const prevStatus    = site.lastStatus || null;
     const statusChanged = prevStatus !== status;
 
-    // ── Log incident on status change ────────
+    // ── Log incident ──────────────────────────────────
     if (statusChanged) {
       const evt = status === 'up' ? '✅ Site came back online' : '🔴 Site went down';
       data.incidents[id].push({ ts: Date.now(), status, ms, code, event: evt });
@@ -73,33 +77,86 @@ const handler = async () => {
       console.log(`[INCIDENT] ${site.name}: ${prevStatus ?? 'new'} → ${status} (${ms}ms)`);
     }
 
-    // ── Discord alerts ───────────────────────
+    // ── Cloudflare DNS Failover ────────────────────────
+    // Triggers on status change only (not every check)
+    if (statusChanged && site.cfEnabled && site.cfZoneId && site.cfRecordId && site.cfApiToken) {
+      if (status === 'down') {
+        // Switch DNS to maintenance page
+        const maintenanceUrl = buildMaintenanceUrl(site);
+        const cfResult = await cfUpdateRecord(
+          site.cfApiToken,
+          site.cfZoneId,
+          site.cfRecordId,
+          {
+            type:    site.cfRecordType || 'CNAME',
+            name:    site.cfRecordName,
+            content: MAINTENANCE_BASE,
+            ttl:     60,
+            proxied: !!site.cfProxied,
+          }
+        );
+        if (cfResult.success) {
+          console.log(`[CF-FAILOVER] ${site.name}: DNS switched to maintenance page`);
+          // Store that failover is active so we know to restore later
+          sites[i] = { ...site, cfFailoverActive: true };
+        } else {
+          console.warn(`[CF-FAILOVER] ${site.name}: DNS switch FAILED —`, cfResult.error);
+        }
+      } else if (status === 'up' && site.cfFailoverActive) {
+        // Restore DNS to original value
+        if (!site.cfOriginalContent) {
+          console.warn(`[CF-RESTORE] ${site.name}: No original DNS value stored, skipping restore`);
+        } else {
+          const cfResult = await cfUpdateRecord(
+            site.cfApiToken,
+            site.cfZoneId,
+            site.cfRecordId,
+            {
+              type:    site.cfRecordType    || 'CNAME',
+              name:    site.cfRecordName,
+              content: site.cfOriginalContent,
+              ttl:     site.cfOriginalTtl   || 1,
+              proxied: !!site.cfProxied,
+            }
+          );
+          if (cfResult.success) {
+            console.log(`[CF-RESTORE] ${site.name}: DNS restored to ${site.cfOriginalContent}`);
+            sites[i] = { ...site, cfFailoverActive: false };
+          } else {
+            console.warn(`[CF-RESTORE] ${site.name}: DNS restore FAILED —`, cfResult.error);
+          }
+        }
+      }
+    }
+
+    // ── Discord alerts ─────────────────────────────────
     if (site.webhookUrl) {
       let shouldSend = false;
       let alertType  = 'status_change';
 
       if (site.alertMode === 'offline') {
-        // Only when going DOWN (status change)
         shouldSend = statusChanged && status === 'down';
         alertType  = 'down';
       } else if (site.alertMode === 'both') {
-        // Every single check — online ping every run + instant offline
         shouldSend = true;
         alertType  = status === 'down' ? 'down' : 'heartbeat';
       }
 
       if (shouldSend) {
-        await sendDiscord(site, status, ms, code, data, alertType).catch(e =>
+        const failoverNote = (site.cfEnabled && statusChanged)
+          ? (status === 'down' ? '\n> 🔄 DNS failover activated — redirecting to maintenance page' : '\n> ✅ DNS failover deactivated — traffic restored')
+          : '';
+        await sendDiscord(site, status, ms, code, data, alertType, failoverNote).catch(e =>
           console.warn(`[Discord] ${site.name}: ${e.message}`)
         );
       }
     }
 
-    log.push(`${site.name}: ${status} (${ms}ms)${statusChanged ? ' [CHANGED]' : ''}`);
+    log.push(`${site.name}: ${status} (${ms}ms)${statusChanged ? ' [CHANGED]' : ''}${site.cfEnabled && statusChanged ? ' [CF-DNS]' : ''}`);
 
-    // ── Update site record ───────────────────
+    // ── Update site record ──────────────────────────────
     sites[i] = {
-      ...site,
+      ...(sites[i] || site),   // preserve any cfFailoverActive changes from above
       lastStatus:  status,
       lastMs:      ms,
       lastCode:    code,
@@ -121,13 +178,12 @@ const handler = async () => {
 
 module.exports.handler = schedule('* * * * *', handler);
 
-// ── SITE CHECK ────────────────────────────────
+// ── SITE CHECK ────────────────────────────────────────────────────────
 function checkSite(site) {
   return new Promise((resolve) => {
-    const start  = Date.now();
-    let settled  = false;
-
-    const finish = (status, ms, code) => {
+    const start   = Date.now();
+    let settled   = false;
+    const finish  = (status, ms, code) => {
       if (settled) return;
       settled = true;
       resolve({ status, ms: Math.round(ms), code });
@@ -138,7 +194,6 @@ function checkSite(site) {
     try {
       const u   = new URL(site.url);
       const lib = u.protocol === 'https:' ? https : http;
-
       const req = lib.request({
         hostname: u.hostname,
         port:     u.port || (u.protocol === 'https:' ? 443 : 80),
@@ -149,12 +204,9 @@ function checkSite(site) {
       }, (res) => {
         clearTimeout(kill);
         res.resume();
-        const elapsed = Date.now() - start;
-        const code    = res.statusCode;
-        // 2xx, 3xx, 4xx = site is responding = up. 5xx = server error = down
-        finish(code < 500 ? 'up' : 'down', elapsed, code);
+        const code = res.statusCode;
+        finish(code < 500 ? 'up' : 'down', Date.now() - start, code);
       });
-
       req.on('error',   () => { clearTimeout(kill); finish('down', Date.now() - start, null); });
       req.on('timeout', () => { clearTimeout(kill); req.destroy(); finish('down', CHECK_TIMEOUT, null); });
       req.end();
@@ -165,7 +217,94 @@ function checkSite(site) {
   });
 }
 
-// ── GIST ─────────────────────────────────────
+// ── CLOUDFLARE DNS API ────────────────────────────────────────────────
+/**
+ * Update a DNS record via Cloudflare's free-tier API
+ * PATCH /zones/{zone_id}/dns_records/{record_id}
+ *
+ * @param {string} apiToken - Cloudflare API token (Edit DNS zone permission)
+ * @param {string} zoneId   - Zone ID (found in CF dashboard Overview page)
+ * @param {string} recordId - DNS record ID (from CF API list records)
+ * @param {object} record   - { type, name, content, ttl, proxied }
+ * @returns {{ success: boolean, error?: string }}
+ */
+function cfUpdateRecord(apiToken, zoneId, recordId, record) {
+  return new Promise((resolve) => {
+    const payload = JSON.stringify(record);
+    const req = https.request({
+      hostname: 'api.cloudflare.com',
+      path:     `/client/v4/zones/${zoneId}/dns_records/${recordId}`,
+      method:   'PATCH',
+      headers:  {
+        'Authorization': `Bearer ${apiToken}`,
+        'Content-Type':  'application/json',
+        'Content-Length': Buffer.byteLength(payload),
+        'User-Agent':    'Uptracker/4',
+      },
+    }, (res) => {
+      let raw = '';
+      res.on('data', c => raw += c);
+      res.on('end', () => {
+        try {
+          const body = JSON.parse(raw);
+          if (body.success) {
+            resolve({ success: true });
+          } else {
+            const err = body.errors?.[0]?.message || 'Unknown CF error';
+            resolve({ success: false, error: err });
+          }
+        } catch (e) {
+          resolve({ success: false, error: `Parse error: ${e.message}` });
+        }
+      });
+    });
+    req.on('error', (e) => resolve({ success: false, error: e.message }));
+    req.write(payload);
+    req.end();
+  });
+}
+
+/**
+ * Get current value of a DNS record (used to auto-save cfOriginalContent)
+ */
+function cfGetRecord(apiToken, zoneId, recordId) {
+  return new Promise((resolve, reject) => {
+    const req = https.request({
+      hostname: 'api.cloudflare.com',
+      path:     `/client/v4/zones/${zoneId}/dns_records/${recordId}`,
+      method:   'GET',
+      headers:  {
+        'Authorization': `Bearer ${apiToken}`,
+        'Content-Type':  'application/json',
+        'User-Agent':    'Uptracker/4',
+      },
+    }, (res) => {
+      let raw = '';
+      res.on('data', c => raw += c);
+      res.on('end', () => {
+        try {
+          const body = JSON.parse(raw);
+          if (body.success) resolve(body.result);
+          else reject(new Error(body.errors?.[0]?.message || 'CF error'));
+        } catch (e) { reject(e); }
+      });
+    });
+    req.on('error', reject);
+    req.end();
+  });
+}
+
+function buildMaintenanceUrl(site) {
+  const params = new URLSearchParams({
+    id:   site.id,
+    name: site.name,
+    url:  site.url,
+  });
+  const base = site.maintenanceUrl || `https://${MAINTENANCE_BASE}/maintenance`;
+  return `${base}?${params.toString()}`;
+}
+
+// ── GIST ──────────────────────────────────────────────────────────────
 function ghRequest(method, body) {
   return new Promise((resolve, reject) => {
     const payload = body ? JSON.stringify(body) : null;
@@ -184,9 +323,7 @@ function ghRequest(method, body) {
       let raw = '';
       res.on('data', c => raw += c);
       res.on('end', () => {
-        if (res.statusCode >= 400) {
-          return reject(new Error(`GitHub API ${res.statusCode}: ${raw.slice(0, 200)}`));
-        }
+        if (res.statusCode >= 400) return reject(new Error(`GitHub API ${res.statusCode}: ${raw.slice(0,200)}`));
         try { resolve(JSON.parse(raw)); } catch { resolve(raw); }
       });
     });
@@ -214,63 +351,65 @@ async function gistSave(data) {
   });
 }
 
-// ── DISCORD ───────────────────────────────────
-async function sendDiscord(site, status, ms, code, data, alertType) {
-  const isDown    = status === 'down';
+// ── DISCORD ───────────────────────────────────────────────────────────
+async function sendDiscord(site, status, ms, code, data, alertType, extraNote = '') {
+  const isDown      = status === 'down';
   const isHeartbeat = alertType === 'heartbeat';
-  const id        = site.id;
-  const allChecks = data.checks[id] || [];
-  const upCount   = allChecks.filter(c => c.status === 'up').length;
-  const upPct     = allChecks.length
-    ? ((upCount / allChecks.length) * 100).toFixed(1) + '%'
-    : '—';
-  const outages   = (data.incidents[id] || []).filter(i => i.status === 'down').length;
-  const domain    = (() => {
-    try { return new URL(site.url).hostname.replace('www.', ''); }
-    catch { return site.url; }
-  })();
-  const nowIST = new Date().toLocaleString('en-IN', {
+  const id          = site.id;
+  const allChecks   = data.checks[id] || [];
+  const upCount     = allChecks.filter(c => c.status === 'up').length;
+  const upPct       = allChecks.length ? ((upCount / allChecks.length) * 100).toFixed(1) + '%' : '—';
+  const outages     = (data.incidents[id] || []).filter(i => i.status === 'down').length;
+  const domain      = (() => { try { return new URL(site.url).hostname.replace('www.', ''); } catch { return site.url; } })();
+  const nowIST      = new Date().toLocaleString('en-IN', {
     timeZone: 'Asia/Kolkata', hour12: true,
     day: '2-digit', month: 'short', year: 'numeric',
     hour: '2-digit', minute: '2-digit', second: '2-digit',
   });
 
-  // Title and color based on alert type
   let title, description, color;
   if (isHeartbeat) {
     title       = `💚 ${site.name} — ONLINE`;
-    description = `**${site.name}** is responding normally. *(Periodic check)*`;
+    description = `**${site.name}** is responding normally. *(Periodic check)*${extraNote}`;
     color       = 0x10B981;
   } else if (isDown) {
     title       = `🚨 ${site.name} is DOWN`;
-    description = `**${site.name}** is **unreachable**.\n> Confirmed by Netlify server check`;
+    description = `**${site.name}** is **unreachable**.\n> Confirmed by Netlify server check${extraNote}`;
     color       = 0xEF4444;
   } else {
     title       = `✅ ${site.name} is back ONLINE`;
-    description = `**${site.name}** has **recovered** and is responding normally.`;
+    description = `**${site.name}** has **recovered** and is responding normally.${extraNote}`;
     color       = 0x10B981;
+  }
+
+  const fields = [
+    { name: '🌐 URL',        value: `[${domain}](${site.url})`,        inline: true  },
+    { name: '📶 Status',     value: isDown ? '`OFFLINE`' : '`ONLINE`', inline: true  },
+    { name: '⏱ Response',   value: ms ? `\`${ms}ms\`` : '`timeout`',  inline: true  },
+    { name: '🔢 HTTP',      value: code ? `\`${code}\`` : '`—`',       inline: true  },
+    { name: '📊 Uptime',    value: `\`${upPct}\``,                     inline: true  },
+    { name: '📋 Outages',   value: `\`${outages} total\``,             inline: true  },
+    { name: '🕐 Time (IST)',value: `\`${nowIST}\``,                    inline: false },
+    { name: '🖥 Source',    value: '`Netlify server — 24/7`',          inline: true  },
+  ];
+
+  // Add failover status if CF is enabled
+  if (site.cfEnabled) {
+    fields.push({
+      name:   '🔄 DNS Failover',
+      value:  site.cfFailoverActive ? '`Active — on maintenance page`' : '`Inactive — normal DNS`',
+      inline: true,
+    });
   }
 
   const payload = {
     username:   'Uptracker',
     avatar_url: `https://www.google.com/s2/favicons?domain=${domain}&sz=64`,
     embeds: [{
-      title,
-      description,
-      color,
-      fields: [
-        { name: '🌐 URL',        value: `[${domain}](${site.url})`,        inline: true  },
-        { name: '📶 Status',     value: isDown ? '`OFFLINE`' : '`ONLINE`', inline: true  },
-        { name: '⏱ Response',   value: ms ? `\`${ms}ms\`` : '`timeout`',  inline: true  },
-        { name: '🔢 HTTP',      value: code ? `\`${code}\`` : '`—`',       inline: true  },
-        { name: '📊 Uptime',    value: `\`${upPct}\``,                     inline: true  },
-        { name: '📋 Outages',   value: `\`${outages} total\``,             inline: true  },
-        { name: '🕐 Time (IST)',value: `\`${nowIST}\``,                    inline: false },
-        { name: '🖥 Source',    value: '`Netlify server — 24/7`',          inline: true  },
-      ],
+      title, description, color, fields,
       footer: {
         text: isHeartbeat
-          ? `Uptracker • Heartbeat (Online & Offline mode)`
+          ? 'Uptracker • Heartbeat (Online & Offline mode)'
           : `Uptracker • every ${site.interval || 60}s`,
       },
       timestamp: new Date().toISOString(),
@@ -290,10 +429,7 @@ async function sendDiscord(site, status, ms, code, data, alertType) {
         'Content-Length': Buffer.byteLength(body),
         'User-Agent':     'Uptracker/4',
       },
-    }, (res) => {
-      res.resume();
-      resolve(res.statusCode);
-    });
+    }, (res) => { res.resume(); resolve(res.statusCode); });
     req.on('error', () => resolve(null));
     req.write(body);
     req.end();

@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Maintenance — We'll be back soon</title>
+  <meta name="robots" content="noindex, nofollow" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #0a0e1a;
+      --card:     #0f1629;
+      --border:   rgba(255,255,255,0.08);
+      --text:     #e8eaf0;
+      --muted:    #6b7280;
+      --dim:      #374151;
+      --red:      #ef4444;
+      --red-bg:   rgba(239,68,68,0.1);
+      --green:    #10b981;
+      --green-bg: rgba(16,185,129,0.1);
+      --blue:     #3b82f6;
+      --g1:       #6ee7b7;
+      --g2:       #3b82f6;
+      --mono:     'JetBrains Mono', monospace;
+    }
+
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Animated background grid */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(59,130,246,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(59,130,246,0.03) 1px, transparent 1px);
+      background-size: 40px 40px;
+      pointer-events: none;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 48px 40px 40px;
+      max-width: 520px;
+      width: 100%;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 24px 80px rgba(0,0,0,0.5);
+    }
+
+    /* Top accent bar */
+    .card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, var(--red), transparent);
+      animation: blink-bar 1.5s ease-in-out infinite;
+    }
+    @keyframes blink-bar { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+    /* Turns green when recovered */
+    .card.recovered::before {
+      background: linear-gradient(90deg, var(--green), transparent);
+      animation: none;
+    }
+
+    /* Site logo/favicon */
+    .site-logo {
+      width: 56px;
+      height: 56px;
+      border-radius: 14px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      margin: 0 auto 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+    .site-logo img { width: 100%; height: 100%; object-fit: contain; }
+    .site-logo-fallback { font-size: 24px; font-weight: 700; color: var(--muted); }
+
+    /* Status icon */
+    .status-icon {
+      font-size: 52px;
+      margin-bottom: 16px;
+      display: block;
+      animation: float 3s ease-in-out infinite;
+    }
+    @keyframes float {
+      0%,100% { transform: translateY(0); }
+      50%      { transform: translateY(-6px); }
+    }
+
+    h1 {
+      font-size: 24px;
+      font-weight: 700;
+      margin-bottom: 10px;
+      letter-spacing: -0.4px;
+    }
+
+    .subtitle {
+      font-size: 14px;
+      color: var(--muted);
+      line-height: 1.7;
+      margin-bottom: 28px;
+    }
+
+    /* Status badge */
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      border-radius: 99px;
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 28px;
+      border: 1px solid;
+    }
+    .status-badge.down {
+      color: var(--red);
+      background: var(--red-bg);
+      border-color: rgba(239,68,68,0.25);
+    }
+    .status-badge.up {
+      color: var(--green);
+      background: var(--green-bg);
+      border-color: rgba(16,185,129,0.25);
+    }
+    .status-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .status-dot.down { background: var(--red); animation: blink-dot 1s infinite; }
+    .status-dot.up   { background: var(--green); }
+    @keyframes blink-dot { 0%,100%{opacity:1} 50%{opacity:.2} }
+
+    /* Stats row */
+    .stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 28px;
+    }
+    .stat {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 8px;
+    }
+    .stat-val {
+      font-family: var(--mono);
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text);
+      display: block;
+    }
+    .stat-lbl {
+      font-size: 10px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: .6px;
+      margin-top: 2px;
+      display: block;
+    }
+
+    /* Progress bar */
+    .progress-wrap {
+      margin-bottom: 24px;
+    }
+    .progress-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+    .progress-track {
+      height: 5px;
+      background: var(--dim);
+      border-radius: 99px;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      border-radius: 99px;
+      background: linear-gradient(90deg, var(--red), #f87171);
+      transition: width 1s ease;
+    }
+    .progress-fill.up {
+      background: linear-gradient(90deg, var(--green), #34d399);
+    }
+
+    /* Recovery notice */
+    .recovery-notice {
+      background: rgba(16,185,129,0.08);
+      border: 1px solid rgba(16,185,129,0.2);
+      border-radius: 10px;
+      padding: 12px 16px;
+      font-size: 13px;
+      color: var(--green);
+      margin-bottom: 20px;
+      display: none;
+    }
+    .recovery-notice.visible { display: block; }
+
+    /* Footer links */
+    .footer {
+      margin-top: 28px;
+      padding-top: 20px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--dim);
+    }
+    .footer a {
+      color: var(--blue);
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .footer a:hover { text-decoration: underline; }
+    .footer-dot { color: var(--dim); }
+
+    /* Powered by */
+    .powered {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+    .powered svg { width: 14px; height: 14px; }
+    .powered span {
+      background: linear-gradient(135deg, var(--g1), var(--g2));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      font-weight: 600;
+    }
+
+    /* Refresh spinner */
+    .spinner {
+      display: inline-block;
+      width: 12px; height: 12px;
+      border: 2px solid rgba(255,255,255,0.1);
+      border-top-color: var(--blue);
+      border-radius: 50%;
+      animation: spin .8s linear infinite;
+      vertical-align: middle;
+      margin-right: 4px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    @media (max-width: 480px) {
+      .card { padding: 32px 20px 28px; }
+      h1 { font-size: 20px; }
+      .stats { grid-template-columns: 1fr 1fr; }
+      .stats .stat:last-child { grid-column: 1/-1; }
+    }
+  </style>
+</head>
+<body>
+  <div class="card" id="card">
+
+    <!-- Site favicon -->
+    <div class="site-logo" id="siteLogo">
+      <span class="site-logo-fallback" id="siteFallback">🌐</span>
+    </div>
+
+    <span class="status-icon" id="statusIcon">🔧</span>
+
+    <h1 id="pageTitle">We'll be back soon</h1>
+    <p class="subtitle" id="pageSubtitle">
+      <strong id="siteName">This website</strong> is currently undergoing maintenance or experiencing downtime.
+      We're working to restore service as quickly as possible.
+    </p>
+
+    <div class="status-badge down" id="statusBadge">
+      <span class="status-dot down" id="statusDot"></span>
+      <span id="statusText">Currently Offline</span>
+    </div>
+
+    <div class="stats">
+      <div class="stat">
+        <span class="stat-val" id="statUptime">—</span>
+        <span class="stat-lbl">Uptime</span>
+      </div>
+      <div class="stat">
+        <span class="stat-val" id="statResponse">—</span>
+        <span class="stat-lbl">Last Resp.</span>
+      </div>
+      <div class="stat">
+        <span class="stat-val" id="statChecked">—</span>
+        <span class="stat-lbl">Checked</span>
+      </div>
+    </div>
+
+    <div class="progress-wrap" id="progressWrap">
+      <div class="progress-label">
+        <span>Uptime (last checks)</span>
+        <span id="progressPct">0%</span>
+      </div>
+      <div class="progress-track">
+        <div class="progress-fill" id="progressFill" style="width:0%"></div>
+      </div>
+    </div>
+
+    <div class="recovery-notice" id="recoveryNotice">
+      ✅ <strong>Site is back online!</strong> Redirecting you in <span id="redirectCountdown">5</span>s…
+    </div>
+
+    <div class="footer">
+      <span><span class="spinner" id="refreshSpinner"></span>Checking status…</span>
+      <span class="footer-dot">·</span>
+      <a href="#" id="visitLink" target="_blank" rel="noopener">Visit site anyway →</a>
+      <span class="footer-dot">·</span>
+      <div class="powered">
+        <svg viewBox="0 0 32 32" fill="none"><circle cx="16" cy="16" r="14" stroke="url(#g)" stroke-width="2.5"/><path d="M10 16L14 20L22 12" stroke="url(#g)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><defs><linearGradient id="g" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse"><stop stop-color="#6EE7B7"/><stop offset="1" stop-color="#3B82F6"/></linearGradient></defs></svg>
+        Powered by <span>Uptracker</span>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    // ── Parse query params ──────────────────────────────
+    const params   = new URLSearchParams(location.search);
+    const SITE_ID  = params.get('id')     || '';
+    const SITE_URL = params.get('url')    || '';
+    const SITE_NAME = params.get('name') || 'This website';
+    const GIST_ID  = params.get('gist')  || '';
+    const CF_TOKEN = params.get('cft')   || '';  // optional status-only token
+
+    // Gist credentials come from config.js if available
+    const cfg = window.UPTRACKER_CONFIG || {};
+    const GITHUB_TOKEN = cfg.GITHUB_TOKEN || '';
+    const REAL_GIST_ID = GIST_ID || cfg.GIST_ID || '';
+    const GIST_FILE    = 'uptracker_data.json';
+
+    // ── Populate static content ─────────────────────────
+    document.getElementById('siteName').textContent = SITE_NAME;
+    document.getElementById('pageTitle').textContent = `${SITE_NAME} — Maintenance`;
+    document.title = `${SITE_NAME} — Maintenance in Progress`;
+
+    if (SITE_URL) {
+      const domain = (() => { try { return new URL(SITE_URL).hostname.replace('www.',''); } catch { return SITE_URL; } })();
+      const logoImg = document.createElement('img');
+      logoImg.src  = `https://www.google.com/s2/favicons?domain=${domain}&sz=64`;
+      logoImg.alt  = '';
+      logoImg.onerror = () => { logoImg.style.display = 'none'; };
+      document.getElementById('siteLogo').innerHTML = '';
+      document.getElementById('siteLogo').appendChild(logoImg);
+
+      document.getElementById('visitLink').href = SITE_URL;
+    }
+
+    // ── Status polling ──────────────────────────────────
+    let redirectTimer = null;
+    let checkCount    = 0;
+
+    async function pollStatus() {
+      if (!REAL_GIST_ID || !GITHUB_TOKEN) {
+        document.getElementById('refreshSpinner').style.display = 'none';
+        document.querySelector('.footer span').textContent = 'Status monitoring active';
+        return;
+      }
+
+      try {
+        const res  = await fetch(`https://api.github.com/gists/${REAL_GIST_ID}`, {
+          headers: { Authorization: `token ${GITHUB_TOKEN}`, Accept: 'application/vnd.github.v3+json' },
+          cache: 'no-store',
+        });
+        if (!res.ok) throw new Error(res.status);
+
+        const json  = await res.json();
+        const raw   = json.files?.[GIST_FILE]?.content;
+        if (!raw) return;
+
+        const data = JSON.parse(raw);
+        const site = data.sites?.find(s => s.id === SITE_ID || s.url === SITE_URL);
+        if (!site) return;
+
+        checkCount++;
+        updateUI(site, data);
+      } catch(e) {
+        console.warn('Poll error:', e.message);
+      }
+
+      // Poll every 30s
+      setTimeout(pollStatus, 30000);
+    }
+
+    function updateUI(site, data) {
+      const isUp = site.lastStatus === 'up';
+
+      // Update status badge
+      const badge   = document.getElementById('statusBadge');
+      const dot     = document.getElementById('statusDot');
+      const txt     = document.getElementById('statusText');
+      const icon    = document.getElementById('statusIcon');
+      const card    = document.getElementById('card');
+
+      badge.className = `status-badge ${isUp ? 'up' : 'down'}`;
+      dot.className   = `status-dot ${isUp ? 'up' : 'down'}`;
+      txt.textContent  = isUp ? 'Back Online' : 'Currently Offline';
+      icon.textContent = isUp ? '✅' : '🔧';
+      if (isUp) card.classList.add('recovered');
+      else      card.classList.remove('recovered');
+
+      // Uptime
+      const checks = data.checks?.[site.id] || [];
+      const upPct  = checks.length
+        ? Math.round((checks.filter(c=>c.status==='up').length / checks.length) * 100)
+        : 0;
+      document.getElementById('statUptime').textContent   = upPct + '%';
+      document.getElementById('statResponse').textContent = site.lastMs ? site.lastMs + 'ms' : '—';
+      document.getElementById('statChecked').textContent  = site.lastChecked
+        ? new Date(site.lastChecked).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})
+        : '—';
+      document.getElementById('progressPct').textContent  = upPct + '%';
+      const fill = document.getElementById('progressFill');
+      fill.style.width = upPct + '%';
+      fill.className   = `progress-fill ${isUp ? 'up' : ''}`;
+
+      // Footer status
+      document.querySelector('.footer span').innerHTML =
+        `<span class="${isUp ? '' : 'spinner'}" id="refreshSpinner"></span>${isUp ? 'Site is back online!' : 'Checking every 30s…'}`;
+
+      // If recovered → show redirect countdown
+      if (isUp && SITE_URL && !redirectTimer) {
+        const notice = document.getElementById('recoveryNotice');
+        notice.classList.add('visible');
+        let countdown = 5;
+        redirectTimer = setInterval(() => {
+          countdown--;
+          document.getElementById('redirectCountdown').textContent = countdown;
+          if (countdown <= 0) {
+            clearInterval(redirectTimer);
+            window.location.replace(SITE_URL);
+          }
+        }, 1000);
+      }
+    }
+
+    // Start polling
+    pollStatus();
+  </script>
+
+  <!-- Load config.js if available (injected by build) -->
+  <script src="config.js" onerror="void 0"></script>
+</body>
+</html>

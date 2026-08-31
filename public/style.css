@@ -767,3 +767,154 @@ body { font-family: var(--font); background: var(--bg); color: var(--text);
   .pin-digit-extra { width: 36px; height: 44px; font-size: 15px; }
   .pin-digits { gap: 7px; }
 }
+
+/* ═══════════════════════════════════════════
+   CLOUDFLARE DNS FAILOVER SECTION
+   ═══════════════════════════════════════════ */
+
+.cf-section {
+  background: var(--bg-card2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.cf-section-header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.cf-section-header svg { color: #f38020; flex-shrink: 0; }
+
+.cf-badge-free {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--up);
+  background: var(--up-bg);
+  border: 1px solid rgba(16,185,129,0.3);
+  padding: 1px 5px;
+  border-radius: 99px;
+}
+
+/* ── CF enable toggle ─────────────────────── */
+.cf-toggle-label {
+  margin-left: auto;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+}
+.cf-toggle-label input { display: none; }
+
+.cf-toggle-track {
+  width: 36px; height: 20px;
+  background: var(--bg-hover);
+  border: 1px solid var(--border);
+  border-radius: 99px;
+  position: relative;
+  transition: background .2s, border-color .2s;
+}
+
+.cf-toggle-thumb {
+  position: absolute;
+  top: 3px; left: 3px;
+  width: 12px; height: 12px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  transition: transform .2s, background .2s;
+}
+
+.cf-toggle-label input:checked + .cf-toggle-track {
+  background: var(--up-bg);
+  border-color: rgba(16,185,129,0.4);
+}
+
+.cf-toggle-label input:checked + .cf-toggle-track .cf-toggle-thumb {
+  transform: translateX(16px);
+  background: var(--up);
+}
+
+/* ── CF description ───────────────────────── */
+.cf-section-desc {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.6;
+  margin-top: -4px;
+}
+.cf-section-desc strong { color: var(--text); }
+
+/* ── CF fields container ──────────────────── */
+.cf-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+
+.cf-help-link {
+  font-size: 10px;
+  color: var(--blue);
+  text-decoration: none;
+  margin-left: 6px;
+  font-weight: 500;
+}
+.cf-help-link:hover { text-decoration: underline; }
+
+.cf-field-hint {
+  font-size: 10px;
+  color: var(--text-dim);
+  margin-top: 3px;
+  display: block;
+}
+
+/* ── CF status row ────────────────────────── */
+.cf-status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--bg-hover);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.cf-status-indicator {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.cf-status-indicator.up   { background: var(--up); }
+.cf-status-indicator.down { background: var(--down); animation: blink-dot 1s infinite; }
+
+/* ── CF card badge ────────────────────────── */
+.cf-card-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #f38020;
+  background: rgba(243,128,32,0.1);
+  border: 1px solid rgba(243,128,32,0.25);
+  padding: 2px 6px;
+  border-radius: 99px;
+  white-space: nowrap;
+}
+
+.cf-card-badge.active {
+  color: var(--down);
+  background: var(--down-bg);
+  border-color: rgba(239,68,68,0.3);
+  animation: pulse-badge 1.5s ease-in-out infinite;
+}
