@@ -48,18 +48,32 @@ async function loadData() {
 
 async function gistLoad() {
   const { GIST_ID, GIST_FILE, GITHUB_TOKEN } = window.UPTRACKER_CONFIG || {};
+  const isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+
   try {
-    const res = await fetch(`https://api.github.com/gists/${GIST_ID}`, {
-      headers: {
-        'Authorization': `token ${GITHUB_TOKEN}`,
-        'Accept': 'application/vnd.github.v3+json',
-      },
-      cache: 'no-store',
-    });
-    if (!res.ok) throw new Error(`${res.status}`);
-    const data = await res.json();
-    const raw  = data.files?.[GIST_FILE]?.content;
-    return raw ? JSON.parse(raw) : null;
+    if (isLocal) {
+      // Route through local proxy to avoid any potential CORS/caching issues
+      const res = await fetch('/gist-proxy', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ token: GITHUB_TOKEN, gistId: GIST_ID, gistFile: GIST_FILE }),
+      });
+      if (!res.ok) throw new Error(`Proxy ${res.status}`);
+      return await res.json();
+    } else {
+      // Production — direct GitHub API (CORS allowed)
+      const res = await fetch(`https://api.github.com/gists/${GIST_ID}`, {
+        headers: {
+          'Authorization': `token ${GITHUB_TOKEN}`,
+          'Accept': 'application/vnd.github.v3+json',
+        },
+        cache: 'no-store',
+      });
+      if (!res.ok) throw new Error(`${res.status}`);
+      const data = await res.json();
+      const raw  = data.files?.[GIST_FILE]?.content;
+      return raw ? JSON.parse(raw) : null;
+    }
   } catch(e) {
     console.warn('Gist load:', e.message);
     return null;
@@ -191,9 +205,9 @@ function hydrateFromPayload(payload) {
       cfFailoverActive:   s.cfFailoverActive  || false,
       history:    siteChecks,
       uptimePct:  calcUptimePct(siteChecks),
-      status:     s.lastStatus || lastInc?.status || 'checking',
-      responseMs: s.lastMs     || null,
-      lastCheck:  s.lastChecked ? new Date(s.lastChecked).getTime() : (lastInc?.ts || null),
+      status:     (s.lastStatus && s.lastStatus !== '') ? s.lastStatus : (lastInc?.status || 'checking'),
+      responseMs: (s.lastMs && s.lastMs !== '')  ? s.lastMs  : null,
+      lastCheck:  (s.lastChecked && s.lastChecked !== '') ? new Date(s.lastChecked).getTime() : (lastInc?.ts || null),
     };
   });
 
@@ -311,8 +325,13 @@ function buildCardHTML(site) {
   const serverBadge = useGist
     ? `<span class="server-badge">🖥 Server</span>`
     : `<span class="server-badge local">⚡ Local</span>`;
-  const statusLbl = site.status === 'up' ? 'Online' : site.status === 'down' ? 'Offline' : 'Pending…';
-  const sinceTxt  = site.lastCheck ? formatRelativeTime(site.lastCheck) : 'pending';
+  const statusLbl = site.status === 'up'       ? 'Online' 
+                  : site.status === 'down'     ? 'Offline' 
+                  : site.status === 'checking' ? 'Awaiting check…'
+                  : 'Pending…';
+  const sinceTxt  = site.lastCheck 
+    ? formatRelativeTime(site.lastCheck) 
+    : site.status === 'checking' ? 'server checks every 60s' : 'pending';
 
   // Lock badge + Change PIN button on card
   const lockBadge = site.pinHash
@@ -613,18 +632,37 @@ async function handleSaveEdit() {
   if (!name) { errEl.textContent = 'Enter a site name.'; return; }
   if (!url)  { errEl.textContent = 'Enter a URL.'; return; }
   if (webhook && !webhook.includes('discord.com/api/webhooks/')) { errEl.textContent = 'Must be a Discord webhook URL.'; return; }
-  if (cfEnabled && (!cfApiToken || !cfZoneId || !cfRecordId || !cfRecordName)) {
-    errEl.textContent = 'Cloudflare failover requires API Token, Zone ID, Record ID and Record Name.';
+  if (cfEnabled && (!cfApiToken || !cfZoneId || !cfRecordName)) {
+    errEl.textContent = 'Cloudflare failover requires API Token, Zone ID and Record Name. Click "Test Connection" to auto-detect Record ID.';
     return;
   }
 
   const btn = document.getElementById('editModalSaveBtn');
   btn.disabled = true; btn.textContent = 'Saving…';
 
-  await updateSite(id, {
-    name, url: normalizeUrl(url), interval, webhookUrl: webhook, alertMode,
+  // Get existing site to preserve CF fields when toggle is OFF
+  const existingSite = sites.find(s => s.id === id);
+
+  const cfChanges = cfEnabled ? {
+    // CF is ON — save all fields from form
     cfEnabled, cfApiToken, cfZoneId, cfRecordId, cfRecordName,
     cfRecordType, cfOriginalContent, cfMaintenanceUrl,
+  } : {
+    // CF is OFF — preserve existing CF config, just disable it
+    // This prevents wiping Zone ID, Record ID etc when user accidentally turns off CF
+    cfEnabled: false,
+    cfApiToken:        existingSite?.cfApiToken        || cfApiToken,
+    cfZoneId:          existingSite?.cfZoneId          || cfZoneId,
+    cfRecordId:        existingSite?.cfRecordId        || cfRecordId,
+    cfRecordName:      existingSite?.cfRecordName      || cfRecordName,
+    cfRecordType:      existingSite?.cfRecordType      || cfRecordType,
+    cfOriginalContent: existingSite?.cfOriginalContent || cfOriginalContent,
+    cfMaintenanceUrl:  existingSite?.cfMaintenanceUrl  || cfMaintenanceUrl,
+  };
+
+  await updateSite(id, {
+    name, url: normalizeUrl(url), interval, webhookUrl: webhook, alertMode,
+    ...cfChanges,
   });
 
   btn.disabled = false; btn.textContent = 'Save Changes';
@@ -739,27 +777,20 @@ function bindEvents() {
 async function cfApiFetch(path, token, method = 'GET', body = null) {
   const isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
 
-  if (isLocal) {
-    // Local dev server proxy (server.js) — GET proxy via query param + x-cf-token header
-    const fetchOptions = {
-      method: method,
-      headers: {
-        'Content-Type': 'application/json',
-        'x-cf-token':   token,
-      },
-    };
-    if (body && method !== 'GET') fetchOptions.body = JSON.stringify(body);
-    const res = await fetch(`/cf-proxy?path=${encodeURIComponent(path)}`, fetchOptions);
-    return res.json();
-  } else {
-    // Netlify function proxy — POST with JSON body containing all params
-    const res = await fetch('/.netlify/functions/cf-proxy', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ path, token, method, body }),
-    });
-    return res.json();
+  // Always use POST with JSON body — consistent on both localhost and Netlify
+  const proxyUrl = isLocal ? '/cf-proxy' : '/.netlify/functions/cf-proxy';
+
+  const res = await fetch(proxyUrl, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ path, token, method, body }),
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`CF proxy ${res.status}: ${err.slice(0, 100)}`);
   }
+  return res.json();
 }
 
 // ── CLOUDFLARE TEST ───────────────────────────
@@ -767,38 +798,63 @@ async function handleCfTest() {
   const token    = document.getElementById('cfApiToken')?.value.trim();
   const zoneId   = document.getElementById('cfZoneId')?.value.trim();
   const recordId = document.getElementById('cfRecordId')?.value.trim();
+  const recName  = document.getElementById('cfRecordName')?.value.trim();
   const errEl    = document.getElementById('editModalError');
   const btn      = document.getElementById('cfTestBtn');
 
-  if (!token || !zoneId || !recordId) {
-    errEl.textContent = 'Fill in API Token, Zone ID and Record ID to test.';
+  if (!token || !zoneId) {
+    errEl.textContent = 'Fill in API Token and Zone ID first.';
     return;
   }
 
   btn.disabled = true; btn.textContent = 'Testing…'; errEl.textContent = '';
 
   try {
-    const data = await cfApiFetch(`/zones/${zoneId}/dns_records/${recordId}`, token, 'GET');
+    let rec;
 
-    if (data.success) {
-      const rec = data.result;
-      // Auto-fill fields from live record
-      const origInput = document.getElementById('cfOriginalContent');
-      if (origInput && !origInput.value) origInput.value = rec.content;
-      const nameInput = document.getElementById('cfRecordName');
-      if (nameInput && !nameInput.value) nameInput.value = rec.name;
-      const typeInput = document.getElementById('cfRecordType');
-      if (typeInput) typeInput.value = rec.type;
-
-      errEl.style.color = 'var(--up)';
-      errEl.textContent = `✅ Connected! ${rec.type} ${rec.name} → ${rec.content} (proxied: ${rec.proxied})`;
-      setTimeout(() => { errEl.textContent = ''; errEl.style.color = ''; }, 6000);
-      showToast('Cloudflare connection verified ✅', 'up', '☁️');
+    if (recordId) {
+      // Fetch specific record by ID
+      const data = await cfApiFetch(`/zones/${zoneId}/dns_records/${recordId}`, token, 'GET');
+      if (!data.success) throw new Error(data.errors?.[0]?.message || 'CF error');
+      rec = data.result;
     } else {
-      errEl.textContent = `❌ CF Error: ${data.errors?.[0]?.message || 'Unknown error'}`;
+      // No Record ID — list all records and auto-pick the root A record
+      errEl.style.color = 'var(--blue)';
+      errEl.textContent = '🔍 No Record ID — scanning DNS records…';
+
+      const data = await cfApiFetch(`/zones/${zoneId}/dns_records?type=A&per_page=50`, token, 'GET');
+      if (!data.success) throw new Error(data.errors?.[0]?.message || 'CF error');
+
+      const records = data.result || [];
+      // Pick the root domain A record (shortest name, or matching recName)
+      rec = recName
+        ? records.find(r => r.name === recName || r.name === recName.replace('www.',''))
+        : records.sort((a, b) => a.name.length - b.name.length)[0]; // shortest = root domain
+
+      if (!rec) throw new Error(`No A record found in zone. Found ${records.length} records total.`);
+
+      // Auto-fill Record ID
+      document.getElementById('cfRecordId').value = rec.id;
     }
+
+    // Auto-fill all fields from the record
+    const origInput = document.getElementById('cfOriginalContent');
+    if (origInput && !origInput.value) origInput.value = rec.content;
+    const nameInput = document.getElementById('cfRecordName');
+    if (nameInput && !nameInput.value) nameInput.value = rec.name;
+    const typeInput = document.getElementById('cfRecordType');
+    if (typeInput) typeInput.value = rec.type;
+    const recIdInput = document.getElementById('cfRecordId');
+    if (recIdInput && !recIdInput.value) recIdInput.value = rec.id;
+
+    errEl.style.color = 'var(--up)';
+    errEl.textContent = `✅ Found! ${rec.type} ${rec.name} → ${rec.content} (ID: ${rec.id.slice(0,8)}…)`;
+    setTimeout(() => { errEl.textContent = ''; errEl.style.color = ''; }, 8000);
+    showToast('Cloudflare DNS record found ✅', 'up', '☁️');
+
   } catch(e) {
-    errEl.textContent = `❌ Request failed: ${e.message}`;
+    errEl.style.color = '';
+    errEl.textContent = `❌ ${e.message}`;
   }
 
   btn.disabled = false; btn.textContent = 'Test Connection';
@@ -900,6 +956,9 @@ function initPinBox(containerId, opts = {}) {
 
       if (inp.value && i < digits.length - 1) {
         digits[i + 1].focus();
+      } else if (inp.value && i === digits.length - 1) {
+        // Last digit filled — auto-jump to confirm box if one exists
+        opts.onComplete?.();
       }
       opts.onChange?.();
     });
@@ -988,13 +1047,20 @@ function closeSetPin() {
 }
 
 async function handleSetPinConfirm() {
-  const pin1 = getPinValue('setPinDigits');
-  const pin2 = getPinValue('confirmPinDigits');
+  const pin1  = getPinValue('setPinDigits');
+  const pin2  = getPinValue('confirmPinDigits');
   const errEl = document.getElementById('setPinError');
 
   if (pin1.length < 4) {
-    errEl.textContent = 'Enter all 4 digits.';
+    errEl.textContent = 'Enter all 4 digits for your PIN.';
     shakePinBox('setPinDigits');
+    setTimeout(() => document.querySelector('#setPinDigits .pin-digit')?.focus(), 50);
+    return;
+  }
+  if (pin2.length < 4) {
+    errEl.textContent = 'Confirm your PIN in the second box.';
+    shakePinBox('confirmPinDigits');
+    setTimeout(() => document.querySelector('#confirmPinDigits .pin-digit')?.focus(), 50);
     return;
   }
   if (pin1 !== pin2) {
@@ -1005,22 +1071,23 @@ async function handleSetPinConfirm() {
     return;
   }
   if (pin1 === MASTER_PIN.slice(0, 4)) {
-    errEl.textContent = 'Cannot use the first 4 digits of master PIN.';
+    errEl.textContent = 'Cannot use the first 4 digits of the master PIN.';
     shakePinBox('setPinDigits');
     return;
   }
 
   successPinBox('setPinDigits');
   successPinBox('confirmPinDigits');
+  errEl.style.color   = 'var(--up)';
+  errEl.textContent   = '✅ PIN set! Adding site…';
 
-  await new Promise(r => setTimeout(r, 350)); // let success animation play
+  await new Promise(r => setTimeout(r, 400));
 
   const pinHash = hashPin(pin1);
+  const d = _pendingAddData;        // ← read BEFORE closeSetPin clears it
   closeSetPin();
 
-  // Now actually add the site with the PIN hash
-  const d = _pendingAddData;
-  if (!d) return;
+  if (!d) { console.error('No pending add data'); return; }
   await addSiteWithPin(d.name, d.url, d.interval, d.webhookUrl, d.alertMode, pinHash);
 }
 
@@ -1214,9 +1281,19 @@ async function addSiteWithPin(name, url, interval, webhookUrl, alertMode, pinHas
   sites.push(site);
   incidents[id] = [];
   checks[id]    = [];
-  await gistSave(buildPayload());
-  renderAll();
-  showToast(`${name} added & protected 🔒`, 'up', '✅');
+
+  try {
+    await gistSave(buildPayload());
+    // Re-sync from Gist to confirm persistence and get latest server data
+    await loadData();
+    renderAll();
+    showToast(`${name} added — waiting for first server check`, 'up', '✅');
+  } catch(e) {
+    console.error('[addSiteWithPin] gistSave error:', e);
+    renderAll();
+    showToast(`${name} added locally — cloud sync failed`, 'info', '⚠️');
+  }
+
   return site;
 }
 
@@ -1283,14 +1360,19 @@ function updateCfStatusRow(site) {
   const ind = document.getElementById('cfStatusIndicator');
   const txt = document.getElementById('cfStatusText');
   if (!row) return;
-  if (site.cfEnabled && site.cfZoneId && site.cfRecordId) {
+
+  // Always show the row when CF is enabled (Test Connection should always be accessible)
+  if (site.cfEnabled) {
     row.style.display = 'flex';
     if (site.cfFailoverActive) {
-      ind.className = 'cf-status-indicator down';
+      ind.className   = 'cf-status-indicator down';
       txt.textContent = '🔄 Failover active — DNS pointing to maintenance page';
-    } else {
-      ind.className = 'cf-status-indicator up';
+    } else if (site.cfRecordId) {
+      ind.className   = 'cf-status-indicator up';
       txt.textContent = '✅ Normal — DNS pointing to your server';
+    } else {
+      ind.className   = 'cf-status-indicator';
+      txt.textContent = '⚠️ Record ID missing — click Test Connection to auto-detect';
     }
   } else {
     row.style.display = 'none';
@@ -1309,8 +1391,11 @@ async function _doRemoveSite(id) {
 
 // ── BIND PIN MODAL EVENTS ─────────────────────────────────────────────
 function bindPinEvents() {
-  // Set PIN
-  initPinBox('setPinDigits',     { onEnter: () => document.querySelector('#confirmPinDigits .pin-digit')?.focus() });
+  // Set PIN — auto-jump to confirm box when all 4 digits of first box are filled
+  initPinBox('setPinDigits', {
+    onEnter:    () => document.querySelector('#confirmPinDigits .pin-digit')?.focus(),
+    onComplete: () => setTimeout(() => document.querySelector('#confirmPinDigits .pin-digit')?.focus(), 80),
+  });
   initPinBox('confirmPinDigits', { onEnter: handleSetPinConfirm });
   document.getElementById('setPinConfirm').addEventListener('click', handleSetPinConfirm);
   document.getElementById('setPinCancel').addEventListener('click', closeSetPin);

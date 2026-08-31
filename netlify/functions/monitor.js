@@ -84,9 +84,12 @@ const handler = async () => {
     // ── Cloudflare DNS Failover ────────────────────────
     // Triggers on status change only (not every check)
     if (statusChanged && site.cfEnabled && site.cfZoneId && site.cfRecordId) {
-      // Use env var token first (secure) — fallback to site-stored token (legacy support)
-      // To secure: set CF_TOKEN in Netlify env vars, remove cfApiToken from site settings
-      const cfToken = CF_TOKEN_ENV || site.cfApiToken || null;
+      // Token priority:
+      // 1. Per-site env var: CF_TOKEN_siteid (e.g. CF_TOKEN_site_1788168353097_yssiy)
+      // 2. Global env var: CF_TOKEN (works if all sites are on same CF account)
+      // 3. Legacy: site.cfApiToken stored in Gist (NOT recommended - gets revoked)
+      const siteEnvKey = `CF_TOKEN_${site.id}`.replace(/[^a-zA-Z0-9_]/g, '_');
+      const cfToken    = process.env[siteEnvKey] || CF_TOKEN_ENV || site.cfApiToken || null;
 
       if (!cfToken) {
         console.warn(`[CF] ${site.name}: No CF token. Set CF_TOKEN in Netlify env vars.`);
