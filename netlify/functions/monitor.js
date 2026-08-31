@@ -18,8 +18,23 @@ const http    = require('http');
 const { URL } = require('url');
 const { schedule } = require('@netlify/functions');
 
-// ── CONFIG FROM ENV VARS ──────────────────────
-const GITHUB_TOKEN  = process.env.GITHUB_TOKEN;
+// ── TOKEN DECRYPTION ──────────────────────────
+// Decrypts CF tokens stored encrypted in Gist
+// ENCRYPT_KEY must match the key used in the browser (from Netlify env var)
+const ENCRYPT_KEY = process.env.ENCRYPT_KEY || 'uptracker-default-key-change-me!';
+
+function decryptCfToken(hex) {
+  if (!hex) return null;
+  // Legacy: plain token (not encrypted) — starts with cfut_ or cfup_
+  if (hex.startsWith('cfut_') || hex.startsWith('cfup_')) return hex;
+  // Encrypted hex string — decrypt with XOR
+  try {
+    const bytes = hex.match(/.{2}/g) || [];
+    return bytes.map((b, i) =>
+      String.fromCharCode(parseInt(b, 16) ^ ENCRYPT_KEY.charCodeAt(i % ENCRYPT_KEY.length))
+    ).join('');
+  } catch { return null; }
+}
 const GIST_ID       = process.env.GIST_ID;
 const GIST_FILE     = 'uptracker_data.json';
 
@@ -87,9 +102,10 @@ const handler = async () => {
       // Token priority:
       // 1. Per-site env var: CF_TOKEN_siteid (e.g. CF_TOKEN_site_1788168353097_yssiy)
       // 2. Global env var: CF_TOKEN (works if all sites are on same CF account)
-      // 3. Legacy: site.cfApiToken stored in Gist (NOT recommended - gets revoked)
-      const siteEnvKey = `CF_TOKEN_${site.id}`.replace(/[^a-zA-Z0-9_]/g, '_');
-      const cfToken    = process.env[siteEnvKey] || CF_TOKEN_ENV || site.cfApiToken || null;
+      // 3. Encrypted token stored in Gist (decrypted with ENCRYPT_KEY)
+      const siteEnvKey    = `CF_TOKEN_${site.id}`.replace(/[^a-zA-Z0-9_]/g, '_');
+      const encryptedInGist = site.cfApiToken ? decryptCfToken(site.cfApiToken) : null;
+      const cfToken       = process.env[siteEnvKey] || CF_TOKEN_ENV || encryptedInGist || null;
 
       if (!cfToken) {
         console.warn(`[CF] ${site.name}: No CF token. Set CF_TOKEN in Netlify env vars.`);

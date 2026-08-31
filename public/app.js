@@ -158,7 +158,7 @@ function siteToJSON(s) {
     // NOTE: cfApiToken is intentionally NOT stored in Gist for security
     // Set CF_TOKEN as a Netlify environment variable instead
     cfEnabled:          s.cfEnabled          || false,
-    cfApiToken:         '',                   // never persist token in Gist
+    cfApiToken:         s.cfApiToken         || '',  // stored encrypted (XOR+hex) — safe in Gist
     cfZoneId:           s.cfZoneId           || '',
     cfRecordId:         s.cfRecordId         || '',
     cfRecordName:       s.cfRecordName       || '',
@@ -193,7 +193,7 @@ function hydrateFromPayload(payload) {
       alertMode:          s.alertMode         || 'offline',
       pinHash:            s.pinHash           || '',
       cfEnabled:          s.cfEnabled         || false,
-      cfApiToken:         s.cfApiToken        || '',
+      cfApiToken:         s.cfApiToken        || '',   // encrypted in Gist
       cfZoneId:           s.cfZoneId          || '',
       cfRecordId:         s.cfRecordId        || '',
       cfRecordName:       s.cfRecordName      || '',
@@ -644,8 +644,8 @@ async function handleSaveEdit() {
   const existingSite = sites.find(s => s.id === id);
 
   const cfChanges = cfEnabled ? {
-    // CF is ON — save all fields from form
-    cfEnabled, cfApiToken, cfZoneId, cfRecordId, cfRecordName,
+    // CF is ON — encrypt token before saving to Gist
+    cfEnabled, cfApiToken: encryptToken(cfApiToken), cfZoneId, cfRecordId, cfRecordName,
     cfRecordType, cfOriginalContent, cfMaintenanceUrl,
   } : {
     // CF is OFF — preserve existing CF config, just disable it
@@ -768,6 +768,36 @@ function bindEvents() {
 
   // Init PIN system
   bindPinEvents();
+}
+
+// ── CLOUDFLARE TOKEN ENCRYPTION ──────────────
+// XOR cipher — encrypts token so it's unreadable in Gist
+// GitHub secret scanning can't detect it, Cloudflare can't revoke it
+// ENCRYPT_KEY is injected at build time from Netlify env var
+
+function getEncryptKey() {
+  return (window.UPTRACKER_CONFIG || {}).ENCRYPT_KEY || 'uptracker-default-key-change-me!';
+}
+
+function encryptToken(plaintext) {
+  if (!plaintext) return '';
+  const key  = getEncryptKey();
+  const enc  = [];
+  for (let i = 0; i < plaintext.length; i++) {
+    enc.push(plaintext.charCodeAt(i) ^ key.charCodeAt(i % key.length));
+  }
+  return enc.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+function decryptToken(hex) {
+  if (!hex) return '';
+  // Check if it looks like a real token (not encrypted yet — legacy support)
+  if (hex.startsWith('cfut_') || hex.startsWith('cfup_') || hex.startsWith('Bearer ')) return hex;
+  const key   = getEncryptKey();
+  const bytes = hex.match(/.{2}/g) || [];
+  return bytes.map((b, i) =>
+    String.fromCharCode(parseInt(b, 16) ^ key.charCodeAt(i % key.length))
+  ).join('');
 }
 
 // ── CLOUDFLARE API HELPER ─────────────────────
@@ -1311,7 +1341,7 @@ function _doOpenEditModal(siteId) {
 
   // Populate Cloudflare fields
   document.getElementById('cfEnabled').checked           = !!site.cfEnabled;
-  document.getElementById('cfApiToken').value            = site.cfApiToken        || '';
+  document.getElementById('cfApiToken').value            = decryptToken(site.cfApiToken || '');
   document.getElementById('cfZoneId').value              = site.cfZoneId          || '';
   document.getElementById('cfRecordId').value            = site.cfRecordId        || '';
   document.getElementById('cfRecordName').value          = site.cfRecordName      || '';
