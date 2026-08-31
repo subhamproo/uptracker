@@ -81,49 +81,58 @@ const handler = async () => {
     // Triggers on status change only (not every check)
     if (statusChanged && site.cfEnabled && site.cfZoneId && site.cfRecordId && site.cfApiToken) {
       if (status === 'down') {
-        // Switch DNS to maintenance page
-        const maintenanceUrl = buildMaintenanceUrl(site);
+        // For A records: switch to CNAME pointing to maintenance page
+        // For CNAME records: just update the content
+        // Cloudflare supports CNAME at root (zone apex) via CNAME flattening when proxied
+        const failoverRecord = {
+          type:    'CNAME',               // always use CNAME for failover target
+          name:    site.cfRecordName,
+          content: MAINTENANCE_BASE,
+          ttl:     60,
+          proxied: true,                  // must be proxied for CNAME flattening at root
+        };
+
+        // Save original type so we can restore correctly
+        sites[i] = {
+          ...site,
+          cfOriginalType: site.cfRecordType || 'A',
+          cfOriginalTtl:  site.cfOriginalTtl || 1,
+        };
+
         const cfResult = await cfUpdateRecord(
-          site.cfApiToken,
-          site.cfZoneId,
-          site.cfRecordId,
-          {
-            type:    site.cfRecordType || 'CNAME',
-            name:    site.cfRecordName,
-            content: MAINTENANCE_BASE,
-            ttl:     60,
-            proxied: !!site.cfProxied,
-          }
+          site.cfApiToken, site.cfZoneId, site.cfRecordId, failoverRecord
         );
         if (cfResult.success) {
-          console.log(`[CF-FAILOVER] ${site.name}: DNS switched to maintenance page`);
-          // Store that failover is active so we know to restore later
-          sites[i] = { ...site, cfFailoverActive: true };
+          console.log(`[CF-FAILOVER] ${site.name}: DNS → maintenance page (CNAME)`);
+          sites[i] = { ...sites[i], cfFailoverActive: true };
         } else {
-          console.warn(`[CF-FAILOVER] ${site.name}: DNS switch FAILED —`, cfResult.error);
+          console.warn(`[CF-FAILOVER] ${site.name}: FAILED — ${cfResult.error}`);
         }
+
       } else if (status === 'up' && site.cfFailoverActive) {
-        // Restore DNS to original value
-        if (!site.cfOriginalContent) {
-          console.warn(`[CF-RESTORE] ${site.name}: No original DNS value stored, skipping restore`);
+        // Restore original DNS record
+        const originalType    = site.cfOriginalType    || site.cfRecordType || 'A';
+        const originalContent = site.cfOriginalContent || '';
+
+        if (!originalContent) {
+          console.warn(`[CF-RESTORE] ${site.name}: No original value stored — cannot restore`);
         } else {
+          const restoreRecord = {
+            type:    originalType,
+            name:    site.cfRecordName,
+            content: originalContent,
+            ttl:     site.cfOriginalTtl || 1,
+            proxied: !!site.cfProxied,
+          };
+
           const cfResult = await cfUpdateRecord(
-            site.cfApiToken,
-            site.cfZoneId,
-            site.cfRecordId,
-            {
-              type:    site.cfRecordType    || 'CNAME',
-              name:    site.cfRecordName,
-              content: site.cfOriginalContent,
-              ttl:     site.cfOriginalTtl   || 1,
-              proxied: !!site.cfProxied,
-            }
+            site.cfApiToken, site.cfZoneId, site.cfRecordId, restoreRecord
           );
           if (cfResult.success) {
-            console.log(`[CF-RESTORE] ${site.name}: DNS restored to ${site.cfOriginalContent}`);
-            sites[i] = { ...site, cfFailoverActive: false };
+            console.log(`[CF-RESTORE] ${site.name}: DNS → ${originalContent} (${originalType})`);
+            sites[i] = { ...sites[i], cfFailoverActive: false };
           } else {
-            console.warn(`[CF-RESTORE] ${site.name}: DNS restore FAILED —`, cfResult.error);
+            console.warn(`[CF-RESTORE] ${site.name}: FAILED — ${cfResult.error}`);
           }
         }
       }
