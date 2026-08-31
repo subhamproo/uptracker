@@ -17,7 +17,16 @@
     Cache-Control = "no-store, no-cache, must-revalidate"
 
 [[headers]]
-  for = "/*"
+  for = "/maintenance.css"
+  [headers.values]
+    Cache-Control = "no-store, no-cache, must-revalidate"
+
+[[headers]]
+  for = "/maintenance.js"
+  [headers.values]
+    Cache-Control = "no-store, no-cache, must-revalidate"
+
+
   [headers.values]
     X-Frame-Options = "DENY"
     X-Content-Type-Options = "nosniff"
