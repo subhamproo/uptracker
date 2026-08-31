@@ -111,13 +111,14 @@ function buildPayload() {
 
 function siteToJSON(s) {
   return {
-    id:         s.id,
-    name:       s.name,
-    url:        s.url,
-    interval:   s.interval || 30,
-    webhookUrl: s.webhookUrl || '',
-    alertMode:  s.alertMode  || 'offline',
-    addedAt:    s.addedAt,
+    id:          s.id,
+    name:        s.name,
+    url:         s.url,
+    interval:    s.interval || 30,
+    webhookUrl:  s.webhookUrl || '',
+    alertMode:   s.alertMode  || 'offline',
+    pinHash:     s.pinHash    || '',          // ← PIN hash persisted in Gist
+    addedAt:     s.addedAt,
     // Preserve server-written fields if they exist
     lastStatus:  s.lastStatus  || undefined,
     lastMs:      s.lastMs      || undefined,
@@ -140,9 +141,9 @@ function hydrateFromPayload(payload) {
       ...s,
       webhookUrl: s.webhookUrl || '',
       alertMode:  s.alertMode  || 'offline',
+      pinHash:    s.pinHash    || '',          // ← preserve PIN hash
       history:    siteChecks,
       uptimePct:  calcUptimePct(siteChecks),
-      // Use server-provided last status, or last incident, or 'unknown'
       status:     s.lastStatus || lastInc?.status || 'checking',
       responseMs: s.lastMs     || null,
       lastCheck:  s.lastChecked ? new Date(s.lastChecked).getTime() : (lastInc?.ts || null),
@@ -207,13 +208,16 @@ async function updateSite(id, changes) {
   updateCardStatus(site);
 }
 
+// removeSite — checks PIN before deleting
 async function removeSite(id) {
-  sites     = sites.filter(s => s.id !== id);
-  delete incidents[id];
-  delete checks[id];
-  await gistSave(buildPayload());
-  renderAll();
-  showToast('Site removed', 'info', '🗑️');
+  const site = sites.find(s => s.id === id);
+  if (!site) return;
+
+  if (site.pinHash) {
+    openVerifyPin(id, 'delete');
+  } else {
+    await _doRemoveSite(id);
+  }
 }
 
 function normalizeUrl(u) {
@@ -262,6 +266,14 @@ function buildCardHTML(site) {
     : `<span class="server-badge local">⚡ Local</span>`;
   const statusLbl = site.status === 'up' ? 'Online' : site.status === 'down' ? 'Offline' : 'Pending…';
   const sinceTxt  = site.lastCheck ? formatRelativeTime(site.lastCheck) : 'pending';
+
+  // Lock badge + Change PIN button on card
+  const lockBadge = site.pinHash
+    ? `<span class="lock-badge" title="PIN protected">
+        <svg viewBox="0 0 20 20" fill="none"><path d="M13 7H7m6 0a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2m6 0V5a2 2 0 0 0-2-2H9a2 2 0 0 0-2 2v2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+        PIN
+       </span>`
+    : '';
 
   const discordBadge = site.webhookUrl
     ? `<span class="discord-badge">
@@ -331,7 +343,7 @@ function buildCardHTML(site) {
     </div>
 
     <div class="card-footer">
-      <div class="footer-meta">${serverBadge} ${totalChecks} checks · every ${site.interval}s ${totalInc > 0 ? `· <span class="incident-count">${totalInc} outage${totalInc>1?'s':''}</span>` : ''}</div>
+      <div class="footer-meta">${serverBadge} ${lockBadge} ${totalChecks} checks · every ${site.interval}s ${totalInc > 0 ? `· <span class="incident-count">${totalInc} outage${totalInc>1?'s':''}</span>` : ''}</div>
       <div class="footer-right">
         ${discordBadge}
         <button class="view-log-btn" onclick="openLogPanel('${site.id}')">
@@ -504,28 +516,24 @@ async function handleAddSite() {
   const norm = normalizeUrl(url);
   if (!isValidUrl(norm)) { errEl.textContent='Enter a valid URL.'; return; }
   if (sites.find(s=>s.url===norm)) { errEl.textContent='Already monitoring this.'; return; }
-  const btn = document.getElementById('modalAddBtn');
-  btn.disabled=true; btn.textContent='Adding…';
+
+  // Close add modal and open Set PIN modal
   closeAddModal();
-  await addSite(name, norm, interval);
-  btn.disabled=false; btn.textContent='Add & Monitor';
-  showToast(`Added ${name}`, 'info', '✅');
+  openSetPin({ name, url: norm, interval, webhookUrl: '', alertMode: 'offline' });
 }
 
-// ── EDIT MODAL ───────────────────────────────
+// openEditModal — checks PIN before opening
 function openEditModal(siteId) {
   const site = sites.find(s=>s.id===siteId);
   if (!site) return;
-  document.getElementById('editSiteId').value        = site.id;
-  document.getElementById('editSiteName').value      = site.name;
-  document.getElementById('editSiteUrl').value       = site.url;
-  document.getElementById('editCheckInterval').value = String(site.interval||60);
-  document.getElementById('editWebhookUrl').value    = site.webhookUrl||'';
-  document.getElementById('editModalError').textContent = '';
-  const mode = site.alertMode||'offline';
-  document.querySelector(`input[name="alertMode"][value="${mode}"]`).checked = true;
-  document.getElementById('editModalOverlay').classList.add('active');
-  setTimeout(()=>document.getElementById('editSiteName').focus(),100);
+
+  if (site.pinHash) {
+    // Site is PIN-protected → verify first
+    openVerifyPin(siteId, 'edit');
+  } else {
+    // No PIN set → open directly (legacy sites or seeds)
+    _doOpenEditModal(siteId);
+  }
 }
 function closeEditModal() { document.getElementById('editModalOverlay').classList.remove('active'); }
 
@@ -622,7 +630,19 @@ function bindEvents() {
     const id = document.getElementById('logPanel').dataset.siteId;
     if (id) renderLogContent(id);
   });
-  document.addEventListener('keydown', e=>{if(e.key==='Escape'){closeAddModal();closeLogPanel();closeEditModal();}});
+  document.addEventListener('keydown', e=>{
+    if(e.key==='Escape'){
+      closeAddModal();
+      closeLogPanel();
+      closeEditModal();
+      closeSetPin();
+      closeVerifyPin();
+      closeChangePinModal();
+    }
+  });
+
+  // Init PIN system
+  bindPinEvents();
 }
 
 // ── TOAST ────────────────────────────────────
@@ -649,7 +669,445 @@ function formatTime(ts)   { return new Date(ts).toLocaleTimeString([],{hour:'2-d
 function formatFullTime(ts){ return new Date(ts).toLocaleString([],{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'}); }
 function formatRelativeTime(ts){ const d=Date.now()-ts; if(d<60000)return'just now';if(d<3600000)return Math.floor(d/60000)+'m ago';if(d<86400000)return Math.floor(d/3600000)+'h ago';return Math.floor(d/86400000)+'d ago'; }
 
-window.removeSite    = removeSite;
-window.openLogPanel  = openLogPanel;
-window.openSiteUrl   = openSiteUrl;
-window.openEditModal = openEditModal;
+window.removeSite        = removeSite;
+window.openLogPanel      = openLogPanel;
+window.openSiteUrl       = openSiteUrl;
+window.openEditModal     = openEditModal;
+window.openChangePinFlow = (siteId) => openVerifyPin(siteId, 'changePinAfterVerify');
+
+
+/* ═══════════════════════════════════════════════════════════
+   PIN SECURITY ENGINE
+   ═══════════════════════════════════════════════════════════ */
+
+const MASTER_PIN = '381998';
+
+// ── HASH (simple djb2 — not cryptographic, good enough for UX lock) ──
+function hashPin(pin) {
+  let h = 5381;
+  for (let i = 0; i < pin.length; i++) {
+    h = ((h << 5) + h) + pin.charCodeAt(i);
+    h = h & 0xffffffff;
+  }
+  return (h >>> 0).toString(16).padStart(8, '0');
+}
+
+function pinMatches(input, storedHash) {
+  if (!storedHash) return false;
+  if (input === MASTER_PIN) return true;           // master always works
+  return hashPin(input) === storedHash;
+}
+
+// ── PIN DIGIT BOX CONTROLLER ──────────────────────────────────────────
+// Manages a .pin-digits container: auto-advance, backspace, paste, focus
+function initPinBox(containerId, opts = {}) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  const digits = Array.from(container.querySelectorAll('.pin-digit'));
+
+  digits.forEach((inp, i) => {
+    // Only allow numbers
+    inp.addEventListener('keydown', (e) => {
+      if (e.key === 'Backspace') {
+        e.preventDefault();
+        if (inp.value) {
+          inp.value = '';
+          inp.classList.remove('filled');
+        } else if (i > 0) {
+          digits[i - 1].value = '';
+          digits[i - 1].classList.remove('filled');
+          digits[i - 1].focus();
+        }
+        opts.onChange?.();
+        return;
+      }
+      if (e.key === 'ArrowLeft'  && i > 0)              { e.preventDefault(); digits[i-1].focus(); return; }
+      if (e.key === 'ArrowRight' && i < digits.length-1) { e.preventDefault(); digits[i+1].focus(); return; }
+      if (e.key === 'Enter') { opts.onEnter?.(); return; }
+      if (!/^\d$/.test(e.key)) { e.preventDefault(); }
+    });
+
+    inp.addEventListener('input', () => {
+      const val = inp.value.replace(/\D/g, '');
+      inp.value = val ? val[0] : '';
+      inp.classList.toggle('filled', !!inp.value);
+
+      // Activate extra slots styling when we reach the 5th digit
+      if (i >= 3) {
+        container.querySelectorAll('.pin-digit-extra').forEach(d => d.classList.add('active-extra'));
+      }
+
+      if (inp.value && i < digits.length - 1) {
+        digits[i + 1].focus();
+      }
+      opts.onChange?.();
+    });
+
+    // Allow paste of full PIN
+    inp.addEventListener('paste', (e) => {
+      e.preventDefault();
+      const pasted = (e.clipboardData || window.clipboardData).getData('text').replace(/\D/g, '');
+      pasted.split('').forEach((ch, j) => {
+        if (digits[i + j]) {
+          digits[i + j].value = ch;
+          digits[i + j].classList.add('filled');
+        }
+      });
+      const next = Math.min(i + pasted.length, digits.length - 1);
+      digits[next].focus();
+      opts.onChange?.();
+    });
+
+    inp.addEventListener('focus', () => {
+      inp.select();
+    });
+  });
+}
+
+// Read value from a pin-digits container
+function getPinValue(containerId) {
+  const container = document.getElementById(containerId);
+  if (!container) return '';
+  return Array.from(container.querySelectorAll('.pin-digit'))
+    .map(d => d.value).join('');
+}
+
+// Clear all digits in a container
+function clearPinBox(containerId) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  container.querySelectorAll('.pin-digit').forEach(d => {
+    d.value = '';
+    d.classList.remove('filled', 'success');
+  });
+  container.querySelectorAll('.pin-digit-extra').forEach(d => {
+    d.classList.remove('active-extra');
+  });
+  container.classList.remove('shake');
+}
+
+// Shake a pin-digits container (wrong PIN)
+function shakePinBox(containerId) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  el.classList.remove('shake');
+  void el.offsetWidth; // reflow to restart animation
+  el.classList.add('shake');
+  el.querySelectorAll('.pin-digit').forEach(d => d.classList.remove('filled'));
+}
+
+// Flash success (green) on all digits
+function successPinBox(containerId) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  el.querySelectorAll('.pin-digit').forEach(d => d.classList.add('success'));
+}
+
+// ── PENDING ACTION STATE ──────────────────────────────────────────────
+// When user clicks edit/delete, we store what to do after PIN verified
+let _pendingAction = null; // { type: 'edit'|'delete', siteId }
+
+// ── SET PIN MODAL ─────────────────────────────────────────────────────
+let _pendingAddData = null; // store add-site form data while user sets PIN
+
+function openSetPin(addData) {
+  _pendingAddData = addData;
+  clearPinBox('setPinDigits');
+  clearPinBox('confirmPinDigits');
+  document.getElementById('setPinError').textContent = '';
+  document.getElementById('setPinOverlay').classList.add('active');
+  setTimeout(() => {
+    document.querySelector('#setPinDigits .pin-digit')?.focus();
+  }, 120);
+}
+
+function closeSetPin() {
+  document.getElementById('setPinOverlay').classList.remove('active');
+  _pendingAddData = null;
+}
+
+async function handleSetPinConfirm() {
+  const pin1 = getPinValue('setPinDigits');
+  const pin2 = getPinValue('confirmPinDigits');
+  const errEl = document.getElementById('setPinError');
+
+  if (pin1.length < 4) {
+    errEl.textContent = 'Enter all 4 digits.';
+    shakePinBox('setPinDigits');
+    return;
+  }
+  if (pin1 !== pin2) {
+    errEl.textContent = 'PINs don\'t match. Try again.';
+    shakePinBox('confirmPinDigits');
+    clearPinBox('confirmPinDigits');
+    setTimeout(() => document.querySelector('#confirmPinDigits .pin-digit')?.focus(), 50);
+    return;
+  }
+  if (pin1 === MASTER_PIN.slice(0, 4)) {
+    errEl.textContent = 'Cannot use the first 4 digits of master PIN.';
+    shakePinBox('setPinDigits');
+    return;
+  }
+
+  successPinBox('setPinDigits');
+  successPinBox('confirmPinDigits');
+
+  await new Promise(r => setTimeout(r, 350)); // let success animation play
+
+  const pinHash = hashPin(pin1);
+  closeSetPin();
+
+  // Now actually add the site with the PIN hash
+  const d = _pendingAddData;
+  if (!d) return;
+  await addSiteWithPin(d.name, d.url, d.interval, d.webhookUrl, d.alertMode, pinHash);
+}
+
+// ── VERIFY PIN MODAL ──────────────────────────────────────────────────
+function openVerifyPin(siteId, action) {
+  // action: 'edit' | 'delete' | 'changePinAfterVerify'
+  _pendingAction = { siteId, action };
+
+  const site = sites.find(s => s.id === siteId);
+  const name = site?.name || 'this site';
+
+  const icons    = { edit: '✏️', delete: '🗑️', changePinAfterVerify: '🔑' };
+  const titles   = { edit: `Edit "${name}"`, delete: `Delete "${name}"`, changePinAfterVerify: `Change PIN for "${name}"` };
+  const subs     = {
+    edit:                'Enter your PIN to unlock settings for this site.',
+    delete:              'Enter your PIN to permanently remove this site.',
+    changePinAfterVerify:'Enter current PIN to unlock PIN change.',
+  };
+
+  document.getElementById('verifyPinIcon').textContent  = icons[action]  || '🔒';
+  document.getElementById('verifyPinTitle').textContent = titles[action] || 'Enter PIN';
+  document.getElementById('verifyPinSub').textContent   = subs[action]   || 'Enter your 4-digit PIN.';
+
+  clearPinBox('verifyPinDigits');
+  document.getElementById('verifyPinError').textContent = '';
+  document.getElementById('verifyPinOverlay').classList.add('active');
+  setTimeout(() => document.querySelector('#verifyPinDigits .pin-digit')?.focus(), 120);
+}
+
+function closeVerifyPin() {
+  document.getElementById('verifyPinOverlay').classList.remove('active');
+  _pendingAction = null;
+}
+
+async function handleVerifyPinConfirm() {
+  const entered = getPinValue('verifyPinDigits');
+  const errEl   = document.getElementById('verifyPinError');
+
+  if (entered.length < 4) {
+    errEl.textContent = 'Enter at least 4 digits.';
+    shakePinBox('verifyPinDigits');
+    return;
+  }
+
+  const { siteId, action } = _pendingAction || {};
+  const site = sites.find(s => s.id === siteId);
+
+  if (!pinMatches(entered, site?.pinHash)) {
+    errEl.textContent = 'Wrong PIN. Try again.';
+    shakePinBox('verifyPinDigits');
+    clearPinBox('verifyPinDigits');
+    setTimeout(() => document.querySelector('#verifyPinDigits .pin-digit')?.focus(), 50);
+    return;
+  }
+
+  // PIN correct
+  successPinBox('verifyPinDigits');
+  await new Promise(r => setTimeout(r, 300));
+  closeVerifyPin();
+
+  if (action === 'edit') {
+    _doOpenEditModal(siteId);
+  } else if (action === 'delete') {
+    await _doRemoveSite(siteId);
+  } else if (action === 'changePinAfterVerify') {
+    openChangePinModal(siteId);
+  }
+}
+
+// ── CHANGE PIN MODAL ──────────────────────────────────────────────────
+let _changePinSiteId = null;
+
+function openChangePinModal(siteId) {
+  _changePinSiteId = siteId;
+  clearPinBox('oldPinDigits');
+  clearPinBox('newPinDigits');
+  clearPinBox('confirmNewPinDigits');
+  document.getElementById('changePinError').textContent = '';
+  document.getElementById('changePinOverlay').classList.add('active');
+  setTimeout(() => document.querySelector('#oldPinDigits .pin-digit')?.focus(), 120);
+}
+
+function closeChangePinModal() {
+  document.getElementById('changePinOverlay').classList.remove('active');
+  _changePinSiteId = null;
+}
+
+async function handleChangePinConfirm() {
+  const oldPin    = getPinValue('oldPinDigits');
+  const newPin    = getPinValue('newPinDigits');
+  const confirmPin = getPinValue('confirmNewPinDigits');
+  const errEl     = document.getElementById('changePinError');
+
+  const site = sites.find(s => s.id === _changePinSiteId);
+  if (!site) { closeChangePinModal(); return; }
+
+  // Validate old PIN
+  if (oldPin.length < 4) {
+    errEl.textContent = 'Enter your current PIN (4 or 6 digits).';
+    shakePinBox('oldPinDigits');
+    return;
+  }
+  if (!pinMatches(oldPin, site.pinHash)) {
+    errEl.textContent = 'Current PIN is wrong.';
+    shakePinBox('oldPinDigits');
+    clearPinBox('oldPinDigits');
+    setTimeout(() => document.querySelector('#oldPinDigits .pin-digit')?.focus(), 50);
+    return;
+  }
+
+  // Validate new PIN
+  if (newPin.length < 4) {
+    errEl.textContent = 'Enter all 4 digits for new PIN.';
+    shakePinBox('newPinDigits');
+    return;
+  }
+  if (newPin === MASTER_PIN.slice(0, 4)) {
+    errEl.textContent = 'Cannot use the first 4 digits of master PIN.';
+    shakePinBox('newPinDigits');
+    return;
+  }
+  if (newPin !== confirmPin) {
+    errEl.textContent = 'New PINs don\'t match.';
+    shakePinBox('confirmNewPinDigits');
+    clearPinBox('confirmNewPinDigits');
+    setTimeout(() => document.querySelector('#confirmNewPinDigits .pin-digit')?.focus(), 50);
+    return;
+  }
+
+  successPinBox('newPinDigits');
+  successPinBox('confirmNewPinDigits');
+  await new Promise(r => setTimeout(r, 350));
+
+  // Save new PIN hash
+  site.pinHash = hashPin(newPin);
+  await gistSave(buildPayload());
+  closeChangePinModal();
+  showToast('PIN updated successfully', 'up', '🔑');
+  renderAll(); // refresh lock badges
+}
+
+// ── INTERNAL — actual add/edit/delete (called after PIN verified) ─────
+
+// addSiteWithPin is the real addSite that includes the pinHash
+async function addSiteWithPin(name, url, interval, webhookUrl, alertMode, pinHash) {
+  const id   = 'site_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+  const site = {
+    id,
+    name:       name.trim(),
+    url:        normalizeUrl(url.trim()),
+    interval,
+    webhookUrl: webhookUrl || '',
+    alertMode:  alertMode  || 'offline',
+    pinHash:    pinHash    || '',
+    addedAt:    Date.now(),
+    status:     'checking',
+    responseMs: null,
+    uptimePct:  null,
+    lastCheck:  null,
+    history:    [],
+  };
+  sites.push(site);
+  incidents[id] = [];
+  checks[id]    = [];
+  await gistSave(buildPayload());
+  renderAll();
+  showToast(`${name} added & protected 🔒`, 'up', '✅');
+  return site;
+}
+
+function _doOpenEditModal(siteId) {
+  const site = sites.find(s => s.id === siteId);
+  if (!site) return;
+  document.getElementById('editSiteId').value        = site.id;
+  document.getElementById('editSiteName').value      = site.name;
+  document.getElementById('editSiteUrl').value       = site.url;
+  document.getElementById('editCheckInterval').value = String(site.interval || 30);
+  document.getElementById('editWebhookUrl').value    = site.webhookUrl || '';
+  document.getElementById('editModalError').textContent = '';
+  const mode = site.alertMode || 'offline';
+  document.querySelector(`input[name="alertMode"][value="${mode}"]`).checked = true;
+
+  // Inject "Change PIN" row into edit modal footer area (once)
+  const existing = document.getElementById('changePinRow');
+  if (!existing) {
+    const webhookSection = document.querySelector('#editModal .webhook-section');
+    if (webhookSection) {
+      const row = document.createElement('div');
+      row.id        = 'changePinRow';
+      row.className = 'change-pin-row';
+      row.innerHTML = `
+        <div class="change-pin-info">
+          <svg viewBox="0 0 20 20" fill="none"><path d="M13 7H7m6 0a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2m6 0V5a2 2 0 0 0-2-2H9a2 2 0 0 0-2 2v2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          <span>Site PIN is active</span>
+        </div>
+        <button class="change-pin-btn" id="changePinTrigger">Change PIN</button>`;
+      webhookSection.insertAdjacentElement('afterend', row);
+      document.getElementById('changePinTrigger').addEventListener('click', () => {
+        const id = document.getElementById('editSiteId').value;
+        closeEditModal();
+        openChangePinModal(id);
+      });
+    }
+  }
+
+  document.getElementById('editModalOverlay').classList.add('active');
+  setTimeout(() => document.getElementById('editSiteName')?.focus(), 100);
+}
+
+async function _doRemoveSite(id) {
+  const name = sites.find(s => s.id === id)?.name || 'Site';
+  sites     = sites.filter(s => s.id !== id);
+  delete incidents[id];
+  delete checks[id];
+  await gistSave(buildPayload());
+  renderAll();
+  showToast(`${name} removed`, 'info', '🗑️');
+}
+
+// ── BIND PIN MODAL EVENTS ─────────────────────────────────────────────
+function bindPinEvents() {
+  // Set PIN
+  initPinBox('setPinDigits',     { onEnter: () => document.querySelector('#confirmPinDigits .pin-digit')?.focus() });
+  initPinBox('confirmPinDigits', { onEnter: handleSetPinConfirm });
+  document.getElementById('setPinConfirm').addEventListener('click', handleSetPinConfirm);
+  document.getElementById('setPinCancel').addEventListener('click', closeSetPin);
+  document.getElementById('setPinOverlay').addEventListener('click', e => {
+    if (e.target === e.currentTarget) closeSetPin();
+  });
+
+  // Verify PIN (6 slots: 4 normal + 2 extra for master)
+  initPinBox('verifyPinDigits', { onEnter: handleVerifyPinConfirm });
+  document.getElementById('verifyPinConfirm').addEventListener('click', handleVerifyPinConfirm);
+  document.getElementById('verifyPinCancel').addEventListener('click', closeVerifyPin);
+  document.getElementById('verifyPinOverlay').addEventListener('click', e => {
+    if (e.target === e.currentTarget) closeVerifyPin();
+  });
+
+  // Change PIN
+  initPinBox('oldPinDigits',        { onEnter: () => document.querySelector('#newPinDigits .pin-digit')?.focus() });
+  initPinBox('newPinDigits',        { onEnter: () => document.querySelector('#confirmNewPinDigits .pin-digit')?.focus() });
+  initPinBox('confirmNewPinDigits', { onEnter: handleChangePinConfirm });
+  document.getElementById('changePinConfirm').addEventListener('click', handleChangePinConfirm);
+  document.getElementById('changePinCancel').addEventListener('click', closeChangePinModal);
+  document.getElementById('changePinOverlay').addEventListener('click', e => {
+    if (e.target === e.currentTarget) closeChangePinModal();
+  });
+
+  // Close PIN modals on Escape
+  // (hooked into the existing global keydown in bindEvents)
+}

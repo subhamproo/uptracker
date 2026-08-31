@@ -260,6 +260,133 @@
     </div>
   </div>
 
+  <!-- ═══════════════════════════════════════
+       PIN MODALS
+       ═══════════════════════════════════════ -->
+
+  <!-- Set PIN Modal (shown when adding a new site) -->
+  <div class="modal-overlay" id="setPinOverlay">
+    <div class="modal pin-modal" id="setPinModal">
+      <div class="pin-modal-icon">🔐</div>
+      <h2 class="pin-modal-title">Protect Your Site</h2>
+      <p class="pin-modal-sub">Set a 4-digit PIN to lock editing and deletion of this site. Only you (and the master PIN) can make changes.</p>
+
+      <div class="pin-group">
+        <label class="pin-label">Create PIN</label>
+        <div class="pin-digits" id="setPinDigits">
+          <input class="pin-digit" type="password" inputmode="numeric" maxlength="1" data-index="0" />
+          <input class="pin-digit" type="password" inputmode="numeric" maxlength="1" data-index="1" />
+          <input class="pin-digit" type="password" inputmode="numeric" maxlength="1" data-index="2" />
+          <input class="pin-digit" type="password" inputmode="numeric" maxlength="1" data-index="3" />
+        </div>
+      </div>
+
+      <div class="pin-group">
+        <label class="pin-label">Confirm PIN</label>
+        <div class="pin-digits" id="confirmPinDigits">
+          <input class="pin-digit" type="password" inputmode="numeric" maxlength="1" data-index="0" />
+          <input class="pin-digit" type="password" inputmode="numeric" maxlength="1" data-index="1" />
+          <input class="pin-digit" type="password" inputmode="numeric" maxlength="1" data-index="2" />
+          <input class="pin-digit" type="password" inputmode="numeric" maxlength="1" data-index="3" />
+        </div>
+      </div>
+
+      <div class="pin-error" id="setPinError"></div>
+
+      <div class="pin-actions">
+        <button class="btn btn-ghost" id="setPinCancel">Cancel</button>
+        <button class="btn btn-primary" id="setPinConfirm">
+          <svg viewBox="0 0 20 20" fill="none"><path d="M5 10l4 4 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Set PIN &amp; Add Site
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Verify PIN Modal (shown before edit or delete) -->
+  <div class="modal-overlay" id="verifyPinOverlay">
+    <div class="modal pin-modal" id="verifyPinModal">
+      <div class="pin-modal-icon" id="verifyPinIcon">🔒</div>
+      <h2 class="pin-modal-title" id="verifyPinTitle">Enter PIN</h2>
+      <p class="pin-modal-sub" id="verifyPinSub">Enter your 4-digit PIN or the master PIN to continue.</p>
+
+      <div class="pin-group">
+        <label class="pin-label" id="verifyPinLabel">Site PIN</label>
+        <div class="pin-digits" id="verifyPinDigits">
+          <input class="pin-digit" type="password" inputmode="numeric" maxlength="1" data-index="0" />
+          <input class="pin-digit" type="password" inputmode="numeric" maxlength="1" data-index="1" />
+          <input class="pin-digit" type="password" inputmode="numeric" maxlength="1" data-index="2" />
+          <input class="pin-digit" type="password" inputmode="numeric" maxlength="1" data-index="3" />
+          <input class="pin-digit pin-digit-extra" type="password" inputmode="numeric" maxlength="1" data-index="4" />
+          <input class="pin-digit pin-digit-extra" type="password" inputmode="numeric" maxlength="1" data-index="5" />
+        </div>
+        <p class="pin-hint">4 digits for site PIN · 6 digits for master PIN</p>
+      </div>
+
+      <div class="pin-error" id="verifyPinError"></div>
+
+      <div class="pin-actions">
+        <button class="btn btn-ghost" id="verifyPinCancel">Cancel</button>
+        <button class="btn btn-primary" id="verifyPinConfirm">
+          <svg viewBox="0 0 20 20" fill="none"><path d="M13 7H7m6 0a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2m6 0V5a2 2 0 0 0-2-2H9a2 2 0 0 0-2 2v2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+          Unlock
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Change PIN Modal -->
+  <div class="modal-overlay" id="changePinOverlay">
+    <div class="modal pin-modal" id="changePinModal">
+      <div class="pin-modal-icon">🔑</div>
+      <h2 class="pin-modal-title">Change PIN</h2>
+      <p class="pin-modal-sub">Enter your current PIN (or master PIN), then set a new 4-digit PIN.</p>
+
+      <div class="pin-group">
+        <label class="pin-label">Current PIN</label>
+        <div class="pin-digits" id="oldPinDigits">
+          <input class="pin-digit" type="password" inputmode="numeric" maxlength="1" data-index="0" />
+          <input class="pin-digit" type="password" inputmode="numeric" maxlength="1" data-index="1" />
+          <input class="pin-digit" type="password" inputmode="numeric" maxlength="1" data-index="2" />
+          <input class="pin-digit" type="password" inputmode="numeric" maxlength="1" data-index="3" />
+          <input class="pin-digit pin-digit-extra" type="password" inputmode="numeric" maxlength="1" data-index="4" />
+          <input class="pin-digit pin-digit-extra" type="password" inputmode="numeric" maxlength="1" data-index="5" />
+        </div>
+        <p class="pin-hint">4 digits for site PIN · 6 digits for master PIN</p>
+      </div>
+
+      <div class="pin-group">
+        <label class="pin-label">New PIN</label>
+        <div class="pin-digits" id="newPinDigits">
+          <input class="pin-digit" type="password" inputmode="numeric" maxlength="1" data-index="0" />
+          <input class="pin-digit" type="password" inputmode="numeric" maxlength="1" data-index="1" />
+          <input class="pin-digit" type="password" inputmode="numeric" maxlength="1" data-index="2" />
+          <input class="pin-digit" type="password" inputmode="numeric" maxlength="1" data-index="3" />
+        </div>
+      </div>
+
+      <div class="pin-group">
+        <label class="pin-label">Confirm New PIN</label>
+        <div class="pin-digits" id="confirmNewPinDigits">
+          <input class="pin-digit" type="password" inputmode="numeric" maxlength="1" data-index="0" />
+          <input class="pin-digit" type="password" inputmode="numeric" maxlength="1" data-index="1" />
+          <input class="pin-digit" type="password" inputmode="numeric" maxlength="1" data-index="2" />
+          <input class="pin-digit" type="password" inputmode="numeric" maxlength="1" data-index="3" />
+        </div>
+      </div>
+
+      <div class="pin-error" id="changePinError"></div>
+
+      <div class="pin-actions">
+        <button class="btn btn-ghost" id="changePinCancel">Cancel</button>
+        <button class="btn btn-primary" id="changePinConfirm">
+          <svg viewBox="0 0 20 20" fill="none"><path d="M5 10l4 4 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Update PIN
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast Notifications -->
   <div class="toast-container" id="toastContainer"></div>
 

@@ -516,3 +516,253 @@ body { font-family: var(--font); background: var(--bg); color: var(--text);
 @media (max-width: 400px) {
   .alert-mode-row { grid-template-columns: 1fr; }
 }
+
+/* ═══════════════════════════════════════════
+   PIN SECURITY SYSTEM
+   ═══════════════════════════════════════════ */
+
+/* ── PIN MODAL SHELL ─────────────────────── */
+.pin-modal {
+  max-width: 380px;
+  text-align: center;
+  padding: 32px 28px 28px;
+  border-radius: 20px;
+}
+
+.pin-modal-icon {
+  font-size: 40px;
+  margin-bottom: 12px;
+  line-height: 1;
+  animation: icon-drop .4s cubic-bezier(.34,1.56,.64,1);
+}
+@keyframes icon-drop {
+  from { opacity:0; transform:scale(.4) translateY(-12px); }
+  to   { opacity:1; transform:scale(1) translateY(0); }
+}
+
+.pin-modal-title {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 6px;
+  color: var(--text);
+}
+
+.pin-modal-sub {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.6;
+  margin-bottom: 24px;
+  max-width: 300px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* ── PIN GROUPS ──────────────────────────── */
+.pin-group {
+  margin-bottom: 18px;
+}
+
+.pin-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: .7px;
+  margin-bottom: 10px;
+}
+
+.pin-hint {
+  font-size: 10px;
+  color: var(--text-dim);
+  margin-top: 7px;
+  text-align: center;
+}
+
+/* ── PIN DIGIT ROW ───────────────────────── */
+.pin-digits {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+}
+
+/* ── SINGLE DIGIT BOX ────────────────────── */
+.pin-digit {
+  width: 52px;
+  height: 58px;
+  text-align: center;
+  font-size: 22px;
+  font-weight: 700;
+  font-family: var(--mono);
+  color: var(--text);
+  background: var(--bg-card2);
+  border: 2px solid var(--border);
+  border-radius: 12px;
+  outline: none;
+  transition: border-color .15s, box-shadow .15s, transform .1s;
+  caret-color: transparent;
+  /* hide the actual character, show dot via CSS */
+  -webkit-text-security: disc;
+}
+
+.pin-digit:focus {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px rgba(59,130,246,.18);
+  transform: scale(1.06);
+}
+
+.pin-digit.filled {
+  border-color: var(--blue);
+  background: rgba(59,130,246,.08);
+}
+
+.pin-digit.filled:focus {
+  border-color: var(--g1);
+  box-shadow: 0 0 0 3px rgba(110,231,183,.18);
+}
+
+/* Master PIN extra digits (5th & 6th) — narrower, slightly muted */
+.pin-digit-extra {
+  width: 44px;
+  height: 52px;
+  font-size: 18px;
+  border-style: dashed;
+  opacity: .55;
+  border-color: var(--border);
+}
+
+.pin-digit-extra.active-extra {
+  opacity: 1;
+  border-style: solid;
+}
+
+/* ── ERROR STATE ─────────────────────────── */
+.pin-error {
+  min-height: 18px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--down);
+  text-align: center;
+  margin-bottom: 4px;
+}
+
+.pin-error.success {
+  color: var(--up);
+}
+
+/* ── SHAKE ANIMATION (wrong PIN) ─────────── */
+@keyframes pin-shake {
+  0%,100% { transform: translateX(0); }
+  15%     { transform: translateX(-8px); }
+  30%     { transform: translateX(8px); }
+  45%     { transform: translateX(-6px); }
+  60%     { transform: translateX(6px); }
+  75%     { transform: translateX(-3px); }
+  90%     { transform: translateX(3px); }
+}
+
+.pin-digits.shake {
+  animation: pin-shake .45s ease;
+}
+
+/* ── SUCCESS PULSE ───────────────────────── */
+@keyframes pin-success {
+  0%   { box-shadow: 0 0 0 0 rgba(16,185,129,.5); }
+  70%  { box-shadow: 0 0 0 10px rgba(16,185,129,0); }
+  100% { box-shadow: 0 0 0 0 rgba(16,185,129,0); }
+}
+
+.pin-digit.success {
+  border-color: var(--up) !important;
+  background: rgba(16,185,129,.1) !important;
+  animation: pin-success .5s ease;
+}
+
+/* ── PIN ACTIONS ROW ─────────────────────── */
+.pin-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  margin-top: 22px;
+}
+
+.pin-actions .btn {
+  flex: 1;
+  max-width: 160px;
+  justify-content: center;
+}
+
+/* ── LOCK BADGE ON CARD ──────────────────── */
+.lock-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-dim);
+  background: var(--bg-card2);
+  border: 1px solid var(--border);
+  padding: 2px 6px;
+  border-radius: 99px;
+  cursor: default;
+}
+
+.lock-badge svg {
+  width: 9px;
+  height: 9px;
+  color: var(--text-dim);
+}
+
+/* ── CHANGE PIN BUTTON in edit modal ─────── */
+.change-pin-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: var(--bg-card2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  margin-top: 4px;
+}
+
+.change-pin-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.change-pin-info svg {
+  width: 14px;
+  height: 14px;
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+
+.change-pin-btn {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--blue);
+  background: var(--blue-bg);
+  border: 1px solid rgba(59,130,246,.25);
+  padding: 4px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all .15s;
+  white-space: nowrap;
+  font-family: var(--font);
+}
+
+.change-pin-btn:hover {
+  background: rgba(59,130,246,.2);
+  border-color: rgba(59,130,246,.4);
+}
+
+/* ── RESPONSIVE ──────────────────────────── */
+@media (max-width: 480px) {
+  .pin-modal { padding: 24px 16px 20px; }
+  .pin-digit { width: 44px; height: 50px; font-size: 18px; border-radius: 10px; }
+  .pin-digit-extra { width: 36px; height: 44px; font-size: 15px; }
+  .pin-digits { gap: 7px; }
+}
