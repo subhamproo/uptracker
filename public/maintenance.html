@@ -3,29 +3,33 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Maintenance — We'll be back soon</title>
+  <title>Under Maintenance</title>
   <meta name="robots" content="noindex, nofollow" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --bg:       #0a0e1a;
-      --card:     #0f1629;
-      --border:   rgba(255,255,255,0.08);
-      --text:     #e8eaf0;
-      --muted:    #6b7280;
-      --dim:      #374151;
-      --red:      #ef4444;
-      --red-bg:   rgba(239,68,68,0.1);
-      --green:    #10b981;
-      --green-bg: rgba(16,185,129,0.1);
-      --blue:     #3b82f6;
-      --g1:       #6ee7b7;
-      --g2:       #3b82f6;
-      --mono:     'JetBrains Mono', monospace;
+      --bg:      #070b17;
+      --card:    #0d1427;
+      --card2:   #111929;
+      --border:  rgba(255,255,255,0.07);
+      --text:    #e8eaf0;
+      --muted:   #6b7280;
+      --dim:     #374151;
+      --red:     #ef4444;
+      --red-bg:  rgba(239,68,68,0.1);
+      --green:   #10b981;
+      --grn-bg:  rgba(16,185,129,0.1);
+      --blue:    #3b82f6;
+      --g1:      #6ee7b7;
+      --g2:      #3b82f6;
+      --warn:    #f59e0b;
+      --mono:    'JetBrains Mono', monospace;
     }
+
+    html, body { height: 100%; }
 
     body {
       font-family: 'Inter', system-ui, sans-serif;
@@ -36,225 +40,311 @@
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      padding: 24px;
+      padding: 20px;
       -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
     }
 
-    /* Animated background grid */
+    /* Grid bg */
     body::before {
       content: '';
       position: fixed;
       inset: 0;
       background-image:
-        linear-gradient(rgba(59,130,246,0.03) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(59,130,246,0.03) 1px, transparent 1px);
-      background-size: 40px 40px;
+        linear-gradient(rgba(59,130,246,0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(59,130,246,0.04) 1px, transparent 1px);
+      background-size: 44px 44px;
       pointer-events: none;
+      z-index: 0;
     }
 
+    /* Radial glow */
+    body::after {
+      content: '';
+      position: fixed;
+      top: -20%;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 700px;
+      height: 400px;
+      background: radial-gradient(ellipse, rgba(239,68,68,0.06) 0%, transparent 70%);
+      pointer-events: none;
+      z-index: 0;
+      transition: background 1s ease;
+    }
+    body.recovered::after {
+      background: radial-gradient(ellipse, rgba(16,185,129,0.07) 0%, transparent 70%);
+    }
+
+    /* ── MAIN CARD ── */
     .card {
       background: var(--card);
       border: 1px solid var(--border);
-      border-radius: 20px;
-      padding: 48px 40px 40px;
-      max-width: 520px;
+      border-radius: 24px;
       width: 100%;
-      text-align: center;
+      max-width: 580px;
+      padding: 0;
       position: relative;
+      z-index: 1;
+      box-shadow: 0 32px 100px rgba(0,0,0,0.6);
       overflow: hidden;
-      box-shadow: 0 24px 80px rgba(0,0,0,0.5);
     }
 
-    /* Top accent bar */
-    .card::before {
-      content: '';
-      position: absolute;
-      top: 0; left: 0; right: 0;
-      height: 3px;
-      background: linear-gradient(90deg, var(--red), transparent);
-      animation: blink-bar 1.5s ease-in-out infinite;
+    /* Color top bar */
+    .card-topbar {
+      height: 4px;
+      background: linear-gradient(90deg, var(--red), #f87171, transparent);
+      animation: blink-bar 1.8s ease-in-out infinite;
+      transition: background 0.6s ease;
     }
-    @keyframes blink-bar { 0%,100%{opacity:1} 50%{opacity:.3} }
-
-    /* Turns green when recovered */
-    .card.recovered::before {
-      background: linear-gradient(90deg, var(--green), transparent);
+    .card-topbar.up {
+      background: linear-gradient(90deg, var(--green), #34d399, transparent);
       animation: none;
     }
+    @keyframes blink-bar { 0%,100%{opacity:1} 50%{opacity:.25} }
 
-    /* Site logo/favicon */
-    .site-logo {
-      width: 56px;
-      height: 56px;
+    .card-inner {
+      padding: 36px 40px 32px;
+    }
+
+    /* ── HEADER ── */
+    .card-head {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .favicon-wrap {
+      width: 52px;
+      height: 52px;
       border-radius: 14px;
-      background: var(--bg);
+      background: var(--card2);
       border: 1px solid var(--border);
-      margin: 0 auto 20px;
       display: flex;
       align-items: center;
       justify-content: center;
       overflow: hidden;
+      flex-shrink: 0;
     }
-    .site-logo img { width: 100%; height: 100%; object-fit: contain; }
-    .site-logo-fallback { font-size: 24px; font-weight: 700; color: var(--muted); }
+    .favicon-wrap img { width: 100%; height: 100%; object-fit: contain; border-radius: 13px; }
+    .favicon-fallback { font-size: 22px; }
 
-    /* Status icon */
-    .status-icon {
-      font-size: 52px;
-      margin-bottom: 16px;
-      display: block;
-      animation: float 3s ease-in-out infinite;
-    }
-    @keyframes float {
-      0%,100% { transform: translateY(0); }
-      50%      { transform: translateY(-6px); }
-    }
-
-    h1 {
-      font-size: 24px;
+    .head-text { min-width: 0; }
+    .site-name {
+      font-size: 20px;
       font-weight: 700;
-      margin-bottom: 10px;
-      letter-spacing: -0.4px;
+      letter-spacing: -0.3px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
-
-    .subtitle {
-      font-size: 14px;
+    .site-url {
+      font-size: 12px;
       color: var(--muted);
-      line-height: 1.7;
-      margin-bottom: 28px;
+      font-family: var(--mono);
+      margin-top: 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
-    /* Status badge */
-    .status-badge {
-      display: inline-flex;
+    /* ── STATUS BANNER ── */
+    .status-banner {
+      display: flex;
       align-items: center;
-      gap: 8px;
-      padding: 8px 16px;
-      border-radius: 99px;
-      font-size: 13px;
-      font-weight: 600;
-      margin-bottom: 28px;
+      gap: 12px;
+      padding: 14px 18px;
+      border-radius: 14px;
+      margin-bottom: 22px;
       border: 1px solid;
+      transition: all 0.5s ease;
     }
-    .status-badge.down {
-      color: var(--red);
+    .status-banner.down {
       background: var(--red-bg);
       border-color: rgba(239,68,68,0.25);
     }
-    .status-badge.up {
-      color: var(--green);
-      background: var(--green-bg);
+    .status-banner.up {
+      background: var(--grn-bg);
       border-color: rgba(16,185,129,0.25);
     }
+    .status-banner.loading {
+      background: rgba(59,130,246,0.07);
+      border-color: rgba(59,130,246,0.15);
+    }
+
     .status-dot {
-      width: 8px; height: 8px;
+      width: 12px; height: 12px;
       border-radius: 50%;
       flex-shrink: 0;
+      position: relative;
     }
-    .status-dot.down { background: var(--red); animation: blink-dot 1s infinite; }
-    .status-dot.up   { background: var(--green); }
+    .status-dot.down  { background: var(--red);   animation: blink-dot 1s ease-in-out infinite; }
+    .status-dot.up    { background: var(--green); }
+    .status-dot.loading { background: var(--blue); animation: blink-dot 1.2s ease-in-out infinite; }
+    .status-dot.up::after {
+      content: '';
+      position: absolute;
+      inset: -3px;
+      border-radius: 50%;
+      background: var(--green);
+      opacity: 0.3;
+      animation: ping 1.5s cubic-bezier(0,0,.2,1) infinite;
+    }
     @keyframes blink-dot { 0%,100%{opacity:1} 50%{opacity:.2} }
+    @keyframes ping { 75%,100%{transform:scale(2.5);opacity:0} }
 
-    /* Stats row */
-    .stats {
-      display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
-      gap: 10px;
-      margin-bottom: 28px;
-    }
-    .stat {
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 12px 8px;
-    }
-    .stat-val {
-      font-family: var(--mono);
-      font-size: 16px;
+    .status-text-wrap { flex: 1; }
+    .status-title {
+      font-size: 14px;
       font-weight: 600;
+    }
+    .status-title.down    { color: var(--red);   }
+    .status-title.up      { color: var(--green); }
+    .status-title.loading { color: var(--blue);  }
+    .status-desc {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 2px;
+      line-height: 1.5;
+    }
+
+    /* ── METRICS ── */
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    .metric {
+      background: var(--card2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 12px;
+      text-align: center;
+    }
+    .metric-val {
+      font-family: var(--mono);
+      font-size: 18px;
+      font-weight: 700;
       color: var(--text);
       display: block;
+      letter-spacing: -0.5px;
     }
-    .stat-lbl {
+    .metric-val.good { color: var(--green); }
+    .metric-val.bad  { color: var(--red);   }
+    .metric-val.dim  { color: var(--muted); }
+    .metric-lbl {
       font-size: 10px;
       color: var(--muted);
       text-transform: uppercase;
-      letter-spacing: .6px;
-      margin-top: 2px;
+      letter-spacing: .7px;
+      margin-top: 4px;
       display: block;
     }
 
-    /* Progress bar */
-    .progress-wrap {
-      margin-bottom: 24px;
+    /* ── UPTIME BAR ── */
+    .uptime-row {
+      margin-bottom: 20px;
     }
-    .progress-label {
+    .uptime-header {
       display: flex;
       justify-content: space-between;
       font-size: 11px;
       color: var(--muted);
-      margin-bottom: 6px;
+      margin-bottom: 7px;
     }
-    .progress-track {
-      height: 5px;
-      background: var(--dim);
+    .uptime-pct { font-family: var(--mono); font-weight: 600; }
+    .bar-track {
+      height: 6px;
+      background: rgba(255,255,255,0.06);
       border-radius: 99px;
       overflow: hidden;
     }
-    .progress-fill {
+    .bar-fill {
       height: 100%;
       border-radius: 99px;
       background: linear-gradient(90deg, var(--red), #f87171);
-      transition: width 1s ease;
+      transition: width 1s ease, background 0.6s ease;
+      width: 0%;
     }
-    .progress-fill.up {
-      background: linear-gradient(90deg, var(--green), #34d399);
-    }
+    .bar-fill.good { background: linear-gradient(90deg, var(--green), #34d399); }
+    .bar-fill.warn { background: linear-gradient(90deg, var(--warn), #fcd34d); }
 
-    /* Recovery notice */
+    /* ── RECOVERY NOTICE ── */
     .recovery-notice {
-      background: rgba(16,185,129,0.08);
-      border: 1px solid rgba(16,185,129,0.2);
-      border-radius: 10px;
+      display: none;
+      align-items: center;
+      gap: 10px;
       padding: 12px 16px;
+      background: rgba(16,185,129,0.08);
+      border: 1px solid rgba(16,185,129,0.25);
+      border-radius: 12px;
       font-size: 13px;
       color: var(--green);
+      font-weight: 500;
       margin-bottom: 20px;
-      display: none;
+      animation: slide-in .4s ease;
     }
-    .recovery-notice.visible { display: block; }
+    .recovery-notice.show { display: flex; }
+    @keyframes slide-in { from{opacity:0;transform:translateY(-6px)} to{opacity:1;transform:translateY(0)} }
 
-    /* Footer links */
-    .footer {
-      margin-top: 28px;
-      padding-top: 20px;
-      border-top: 1px solid var(--border);
+    .countdown-badge {
+      font-family: var(--mono);
+      font-size: 11px;
+      background: rgba(16,185,129,0.15);
+      border: 1px solid rgba(16,185,129,0.3);
+      padding: 2px 8px;
+      border-radius: 99px;
+      margin-left: auto;
+    }
+
+    /* ── FOOTER ── */
+    .card-footer {
       display: flex;
       align-items: center;
-      justify-content: center;
-      gap: 6px;
-      font-size: 12px;
-      color: var(--dim);
+      gap: 12px;
+      padding: 16px 40px;
+      border-top: 1px solid var(--border);
+      background: rgba(255,255,255,0.015);
     }
-    .footer a {
-      color: var(--blue);
-      text-decoration: none;
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-    }
-    .footer a:hover { text-decoration: underline; }
-    .footer-dot { color: var(--dim); }
 
-    /* Powered by */
-    .powered {
+    .poll-status {
+      font-size: 11px;
+      color: var(--dim);
       display: flex;
       align-items: center;
       gap: 5px;
-      color: var(--muted);
+    }
+    .poll-dot {
+      width: 5px; height: 5px;
+      border-radius: 50%;
+      background: var(--blue);
+      animation: blink-dot .8s ease-in-out infinite;
+    }
+
+    .footer-links {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-left: auto;
       font-size: 11px;
     }
-    .powered svg { width: 14px; height: 14px; }
+    .footer-links a {
+      color: var(--blue);
+      text-decoration: none;
+    }
+    .footer-links a:hover { text-decoration: underline; }
+    .footer-sep { color: var(--dim); }
+
+    .powered {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .powered svg { width: 12px; height: 12px; }
     .powered span {
       background: linear-gradient(135deg, var(--g1), var(--g2));
       -webkit-background-clip: text;
@@ -263,215 +353,264 @@
       font-weight: 600;
     }
 
-    /* Refresh spinner */
-    .spinner {
-      display: inline-block;
-      width: 12px; height: 12px;
-      border: 2px solid rgba(255,255,255,0.1);
-      border-top-color: var(--blue);
-      border-radius: 50%;
-      animation: spin .8s linear infinite;
-      vertical-align: middle;
-      margin-right: 4px;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
-
-    @media (max-width: 480px) {
-      .card { padding: 32px 20px 28px; }
-      h1 { font-size: 20px; }
-      .stats { grid-template-columns: 1fr 1fr; }
-      .stats .stat:last-child { grid-column: 1/-1; }
+    /* ── RESPONSIVE ── */
+    @media (max-width: 520px) {
+      .card-inner { padding: 24px 20px 20px; }
+      .card-footer { padding: 14px 20px; flex-wrap: wrap; }
+      .site-name { font-size: 17px; }
+      .metrics { grid-template-columns: repeat(3,1fr); gap: 7px; }
+      .metric { padding: 10px 8px; }
+      .metric-val { font-size: 15px; }
+      .footer-links { width: 100%; margin-left: 0; justify-content: flex-end; }
     }
   </style>
 </head>
 <body>
-  <div class="card" id="card">
 
-    <!-- Site favicon -->
-    <div class="site-logo" id="siteLogo">
-      <span class="site-logo-fallback" id="siteFallback">🌐</span>
-    </div>
+<div class="card" id="card">
+  <div class="card-topbar" id="topbar"></div>
+  <div class="card-inner">
 
-    <span class="status-icon" id="statusIcon">🔧</span>
-
-    <h1 id="pageTitle">We'll be back soon</h1>
-    <p class="subtitle" id="pageSubtitle">
-      <strong id="siteName">This website</strong> is currently undergoing maintenance or experiencing downtime.
-      We're working to restore service as quickly as possible.
-    </p>
-
-    <div class="status-badge down" id="statusBadge">
-      <span class="status-dot down" id="statusDot"></span>
-      <span id="statusText">Currently Offline</span>
-    </div>
-
-    <div class="stats">
-      <div class="stat">
-        <span class="stat-val" id="statUptime">—</span>
-        <span class="stat-lbl">Uptime</span>
+    <!-- Header -->
+    <div class="card-head">
+      <div class="favicon-wrap" id="faviconWrap">
+        <span class="favicon-fallback">🌐</span>
       </div>
-      <div class="stat">
-        <span class="stat-val" id="statResponse">—</span>
-        <span class="stat-lbl">Last Resp.</span>
-      </div>
-      <div class="stat">
-        <span class="stat-val" id="statChecked">—</span>
-        <span class="stat-lbl">Checked</span>
+      <div class="head-text">
+        <div class="site-name" id="siteName">Loading…</div>
+        <div class="site-url" id="siteUrl"></div>
       </div>
     </div>
 
-    <div class="progress-wrap" id="progressWrap">
-      <div class="progress-label">
+    <!-- Status banner -->
+    <div class="status-banner loading" id="statusBanner">
+      <div class="status-dot loading" id="statusDot"></div>
+      <div class="status-text-wrap">
+        <div class="status-title loading" id="statusTitle">Checking status…</div>
+        <div class="status-desc" id="statusDesc">Connecting to monitoring server</div>
+      </div>
+    </div>
+
+    <!-- Metrics -->
+    <div class="metrics">
+      <div class="metric">
+        <span class="metric-val dim" id="metricUptime">—</span>
+        <span class="metric-lbl">Uptime</span>
+      </div>
+      <div class="metric">
+        <span class="metric-val dim" id="metricResponse">—</span>
+        <span class="metric-lbl">Last Resp.</span>
+      </div>
+      <div class="metric">
+        <span class="metric-val dim" id="metricChecked">—</span>
+        <span class="metric-lbl">Checked</span>
+      </div>
+    </div>
+
+    <!-- Uptime bar -->
+    <div class="uptime-row">
+      <div class="uptime-header">
         <span>Uptime (last checks)</span>
-        <span id="progressPct">0%</span>
+        <span class="uptime-pct" id="uptimePct">—</span>
       </div>
-      <div class="progress-track">
-        <div class="progress-fill" id="progressFill" style="width:0%"></div>
+      <div class="bar-track">
+        <div class="bar-fill" id="barFill"></div>
       </div>
     </div>
 
+    <!-- Recovery notice -->
     <div class="recovery-notice" id="recoveryNotice">
-      ✅ <strong>Site is back online!</strong> Redirecting you in <span id="redirectCountdown">5</span>s…
+      <span>✅ Site is back online!</span>
+      <span class="countdown-badge">Redirecting in <span id="countdownNum">5</span>s</span>
     </div>
 
-    <div class="footer">
-      <span><span class="spinner" id="refreshSpinner"></span>Checking status…</span>
-      <span class="footer-dot">·</span>
-      <a href="#" id="visitLink" target="_blank" rel="noopener">Visit site anyway →</a>
-      <span class="footer-dot">·</span>
+  </div>
+  <div class="card-footer">
+    <div class="poll-status">
+      <div class="poll-dot" id="pollDot"></div>
+      <span id="pollText">Checking every 30s</span>
+    </div>
+    <div class="footer-links">
+      <a href="#" id="visitLink">Visit anyway →</a>
+      <span class="footer-sep">·</span>
       <div class="powered">
         <svg viewBox="0 0 32 32" fill="none"><circle cx="16" cy="16" r="14" stroke="url(#g)" stroke-width="2.5"/><path d="M10 16L14 20L22 12" stroke="url(#g)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><defs><linearGradient id="g" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse"><stop stop-color="#6EE7B7"/><stop offset="1" stop-color="#3B82F6"/></linearGradient></defs></svg>
         Powered by <span>Uptracker</span>
       </div>
     </div>
-
   </div>
+</div>
 
-  <script>
-    // ── Parse query params ──────────────────────────────
-    const params   = new URLSearchParams(location.search);
-    const SITE_ID  = params.get('id')     || '';
-    const SITE_URL = params.get('url')    || '';
-    const SITE_NAME = params.get('name') || 'This website';
-    const GIST_ID  = params.get('gist')  || '';
-    const CF_TOKEN = params.get('cft')   || '';  // optional status-only token
+<!-- Load config.js (has GitHub token + Gist ID) — graceful fail if missing -->
+<script src="config.js" onerror="void 0"></script>
+<script>
+  // ── Query params ──────────────────────────────
+  const p        = new URLSearchParams(location.search);
+  const SITE_ID  = p.get('id')   || '';
+  const SITE_URL = p.get('url')  || '';
+  const SITE_NAME= p.get('name') || 'This website';
 
-    // Gist credentials come from config.js if available
-    const cfg = window.UPTRACKER_CONFIG || {};
-    const GITHUB_TOKEN = cfg.GITHUB_TOKEN || '';
-    const REAL_GIST_ID = GIST_ID || cfg.GIST_ID || '';
-    const GIST_FILE    = 'uptracker_data.json';
+  const cfg   = window.UPTRACKER_CONFIG || {};
+  const TOKEN = cfg.GITHUB_TOKEN || '';
+  const GIST  = cfg.GIST_ID      || '';
+  const FILE  = 'uptracker_data.json';
 
-    // ── Populate static content ─────────────────────────
-    document.getElementById('siteName').textContent = SITE_NAME;
-    document.getElementById('pageTitle').textContent = `${SITE_NAME} — Maintenance`;
-    document.title = `${SITE_NAME} — Maintenance in Progress`;
+  // ── Populate static content ───────────────────
+  document.getElementById('siteName').textContent = SITE_NAME;
+  document.title = `${SITE_NAME} — Under Maintenance`;
 
-    if (SITE_URL) {
-      const domain = (() => { try { return new URL(SITE_URL).hostname.replace('www.',''); } catch { return SITE_URL; } })();
-      const logoImg = document.createElement('img');
-      logoImg.src  = `https://www.google.com/s2/favicons?domain=${domain}&sz=64`;
-      logoImg.alt  = '';
-      logoImg.onerror = () => { logoImg.style.display = 'none'; };
-      document.getElementById('siteLogo').innerHTML = '';
-      document.getElementById('siteLogo').appendChild(logoImg);
-
+  if (SITE_URL) {
+    try {
+      const domain = new URL(SITE_URL).hostname.replace('www.','');
+      document.getElementById('siteUrl').textContent = domain;
       document.getElementById('visitLink').href = SITE_URL;
+
+      const img = document.createElement('img');
+      img.src   = `https://www.google.com/s2/favicons?domain=${domain}&sz=64`;
+      img.alt   = '';
+      img.onerror = () => img.remove();
+      const wrap = document.getElementById('faviconWrap');
+      wrap.innerHTML = '';
+      wrap.appendChild(img);
+    } catch {}
+  } else {
+    document.getElementById('visitLink').style.display = 'none';
+  }
+
+  // ── Status poll ───────────────────────────────
+  let redirecting = false;
+  let pollInterval;
+
+  async function poll() {
+    if (!TOKEN || !GIST) {
+      // No config — show maintenance without live status
+      setStatus('down');
+      document.getElementById('pollText').textContent = 'Monitoring active';
+      document.getElementById('pollDot').style.animation = 'none';
+      return;
     }
 
-    // ── Status polling ──────────────────────────────────
-    let redirectTimer = null;
-    let checkCount    = 0;
+    try {
+      const res  = await fetch(`https://api.github.com/gists/${GIST}`, {
+        headers: { Authorization: `token ${TOKEN}`, Accept: 'application/vnd.github.v3+json' },
+        cache: 'no-store',
+      });
 
-    async function pollStatus() {
-      if (!REAL_GIST_ID || !GITHUB_TOKEN) {
-        document.getElementById('refreshSpinner').style.display = 'none';
-        document.querySelector('.footer span').textContent = 'Status monitoring active';
-        return;
-      }
+      if (!res.ok) throw new Error(`${res.status}`);
 
-      try {
-        const res  = await fetch(`https://api.github.com/gists/${REAL_GIST_ID}`, {
-          headers: { Authorization: `token ${GITHUB_TOKEN}`, Accept: 'application/vnd.github.v3+json' },
-          cache: 'no-store',
-        });
-        if (!res.ok) throw new Error(res.status);
+      const json = await res.json();
+      const raw  = json.files?.[FILE]?.content;
+      if (!raw) throw new Error('No data');
 
-        const json  = await res.json();
-        const raw   = json.files?.[GIST_FILE]?.content;
-        if (!raw) return;
+      const data  = JSON.parse(raw);
+      const site  = SITE_ID
+        ? data.sites?.find(s => s.id === SITE_ID)
+        : data.sites?.find(s => s.url === SITE_URL);
 
-        const data = JSON.parse(raw);
-        const site = data.sites?.find(s => s.id === SITE_ID || s.url === SITE_URL);
-        if (!site) return;
+      if (!site) throw new Error('Site not found');
 
-        checkCount++;
-        updateUI(site, data);
-      } catch(e) {
-        console.warn('Poll error:', e.message);
-      }
-
-      // Poll every 30s
-      setTimeout(pollStatus, 30000);
-    }
-
-    function updateUI(site, data) {
-      const isUp = site.lastStatus === 'up';
-
-      // Update status badge
-      const badge   = document.getElementById('statusBadge');
-      const dot     = document.getElementById('statusDot');
-      const txt     = document.getElementById('statusText');
-      const icon    = document.getElementById('statusIcon');
-      const card    = document.getElementById('card');
-
-      badge.className = `status-badge ${isUp ? 'up' : 'down'}`;
-      dot.className   = `status-dot ${isUp ? 'up' : 'down'}`;
-      txt.textContent  = isUp ? 'Back Online' : 'Currently Offline';
-      icon.textContent = isUp ? '✅' : '🔧';
-      if (isUp) card.classList.add('recovered');
-      else      card.classList.remove('recovered');
-
-      // Uptime
+      const isUp   = site.lastStatus === 'up';
       const checks = data.checks?.[site.id] || [];
       const upPct  = checks.length
-        ? Math.round((checks.filter(c=>c.status==='up').length / checks.length) * 100)
-        : 0;
-      document.getElementById('statUptime').textContent   = upPct + '%';
-      document.getElementById('statResponse').textContent = site.lastMs ? site.lastMs + 'ms' : '—';
-      document.getElementById('statChecked').textContent  = site.lastChecked
-        ? new Date(site.lastChecked).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})
-        : '—';
-      document.getElementById('progressPct').textContent  = upPct + '%';
-      const fill = document.getElementById('progressFill');
-      fill.style.width = upPct + '%';
-      fill.className   = `progress-fill ${isUp ? 'up' : ''}`;
+        ? Math.round(checks.filter(c=>c.status==='up').length / checks.length * 100)
+        : null;
 
-      // Footer status
-      document.querySelector('.footer span').innerHTML =
-        `<span class="${isUp ? '' : 'spinner'}" id="refreshSpinner"></span>${isUp ? 'Site is back online!' : 'Checking every 30s…'}`;
+      setStatus(isUp ? 'up' : 'down', site, upPct);
+      document.getElementById('pollText').textContent = 'Checking every 30s';
 
-      // If recovered → show redirect countdown
-      if (isUp && SITE_URL && !redirectTimer) {
-        const notice = document.getElementById('recoveryNotice');
-        notice.classList.add('visible');
-        let countdown = 5;
-        redirectTimer = setInterval(() => {
-          countdown--;
-          document.getElementById('redirectCountdown').textContent = countdown;
-          if (countdown <= 0) {
-            clearInterval(redirectTimer);
-            window.location.replace(SITE_URL);
-          }
-        }, 1000);
-      }
+      // Trigger redirect if recovered
+      if (isUp && SITE_URL && !redirecting) startRedirect();
+
+    } catch(e) {
+      console.warn('Poll error:', e.message);
+      document.getElementById('pollText').textContent = 'Status check failed — retrying';
+    }
+  }
+
+  function setStatus(state, site = null, upPct = null) {
+    const banner  = document.getElementById('statusBanner');
+    const dot     = document.getElementById('statusDot');
+    const title   = document.getElementById('statusTitle');
+    const desc    = document.getElementById('statusDesc');
+    const topbar  = document.getElementById('topbar');
+
+    // Reset classes
+    ['down','up','loading'].forEach(c => {
+      banner.classList.remove(c);
+      dot.classList.remove(c);
+      title.classList.remove(c);
+    });
+
+    if (state === 'down') {
+      banner.classList.add('down');
+      dot.classList.add('down');
+      title.classList.add('down');
+      title.textContent = 'Currently Offline';
+      desc.textContent  = `${SITE_NAME} is temporarily unavailable. We're working on it.`;
+      topbar.className  = 'card-topbar';
+    } else if (state === 'up') {
+      banner.classList.add('up');
+      dot.classList.add('up');
+      title.classList.add('up');
+      title.textContent = 'Back Online';
+      desc.textContent  = `${SITE_NAME} has recovered and is responding normally.`;
+      topbar.className  = 'card-topbar up';
+      document.body.classList.add('recovered');
+    } else {
+      banner.classList.add('loading');
+      dot.classList.add('loading');
+      title.classList.add('loading');
+      title.textContent = 'Checking status…';
+      desc.textContent  = 'Connecting to monitoring server';
     }
 
-    // Start polling
-    pollStatus();
-  </script>
+    // Metrics
+    if (site) {
+      const mv = document.getElementById('metricResponse');
+      mv.textContent = site.lastMs ? site.lastMs + 'ms' : '—';
+      mv.className   = `metric-val ${site.lastMs < 800 ? 'good' : 'bad'}`;
 
-  <!-- Load config.js if available (injected by build) -->
-  <script src="config.js" onerror="void 0"></script>
+      const mc = document.getElementById('metricChecked');
+      mc.textContent = site.lastChecked
+        ? new Date(site.lastChecked).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})
+        : '—';
+      mc.className = 'metric-val';
+    }
+
+    if (upPct !== null) {
+      const mu = document.getElementById('metricUptime');
+      mu.textContent = upPct + '%';
+      mu.className   = `metric-val ${upPct >= 99 ? 'good' : upPct >= 90 ? '' : 'bad'}`;
+
+      document.getElementById('uptimePct').textContent = upPct + '%';
+      const fill = document.getElementById('barFill');
+      fill.style.width = upPct + '%';
+      fill.className   = `bar-fill ${upPct >= 90 ? 'good' : upPct >= 70 ? 'warn' : ''}`;
+    }
+  }
+
+  function startRedirect() {
+    if (redirecting) return;
+    redirecting = true;
+    clearInterval(pollInterval);
+
+    const notice = document.getElementById('recoveryNotice');
+    notice.classList.add('show');
+
+    let n = 5;
+    const t = setInterval(() => {
+      n--;
+      document.getElementById('countdownNum').textContent = n;
+      if (n <= 0) {
+        clearInterval(t);
+        if (SITE_URL) window.location.replace(SITE_URL);
+      }
+    }, 1000);
+  }
+
+  // Start polling
+  poll();
+  pollInterval = setInterval(poll, 30000);
+</script>
 </body>
 </html>
