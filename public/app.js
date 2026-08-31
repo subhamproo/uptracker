@@ -693,8 +693,10 @@ function hashPin(pin) {
 }
 
 function pinMatches(input, storedHash) {
+  // Master PIN always works — even if no pinHash is set yet
+  if (input === MASTER_PIN) return true;
+  // If no PIN has been set, nothing else can match
   if (!storedHash) return false;
-  if (input === MASTER_PIN) return true;           // master always works
   return hashPin(input) === storedHash;
 }
 
@@ -945,6 +947,15 @@ function openChangePinModal(siteId) {
   clearPinBox('confirmNewPinDigits');
   document.getElementById('changePinError').textContent = '';
 
+  // Update subtitle based on whether site already has a PIN
+  const site = sites.find(s => s.id === siteId);
+  const sub  = document.querySelector('#changePinModal .pin-modal-sub');
+  if (sub) {
+    sub.textContent = site?.pinHash
+      ? 'Enter your current PIN (or master PIN 381998), then set a new 4-digit PIN.'
+      : 'This site has no PIN yet. Enter master PIN (381998) to set one.';
+  }
+
   // Make extra slots (5th & 6th) fully visible — master PIN always available
   document.querySelectorAll('#oldPinDigits .pin-digit-extra').forEach(d => {
     d.classList.add('active-extra');
@@ -975,6 +986,14 @@ async function handleChangePinConfirm() {
     return;
   }
   if (!pinMatches(oldPin, site.pinHash)) {
+    // Special case: site has no PIN yet — only master PIN can set one
+    if (!site.pinHash && oldPin !== MASTER_PIN) {
+      errEl.textContent = 'This site has no PIN. Use master PIN (381998) to set one.';
+      shakePinBox('oldPinDigits');
+      clearPinBox('oldPinDigits');
+      setTimeout(() => document.querySelector('#oldPinDigits .pin-digit')?.focus(), 50);
+      return;
+    }
     errEl.textContent = 'Current PIN is wrong.';
     shakePinBox('oldPinDigits');
     clearPinBox('oldPinDigits');
