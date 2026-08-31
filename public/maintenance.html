@@ -504,7 +504,7 @@
 
       const data  = JSON.parse(raw);
       const site  = SITE_ID
-        ? data.sites?.find(s => s.id === SITE_ID)
+        ? (data.sites?.find(s => s.id === SITE_ID) || data.sites?.find(s => s.url === SITE_URL))
         : data.sites?.find(s => s.url === SITE_URL);
 
       if (!site) throw new Error('Site not found');
