@@ -52,7 +52,9 @@ document.addEventListener('DOMContentLoaded', () => {
   spawnParticles();
   setLoadingState();
   poll();
-  pollIntervalId = setInterval(poll, 30000);
+  // Poll every 60 seconds — matches Netlify server check interval
+  // When site recovers, poll detects isUp=true → startRedirect() fires
+  pollIntervalId = setInterval(poll, 60000);
 });
 
 // ── INJECT ICONS INTO HTML ────────────────────
