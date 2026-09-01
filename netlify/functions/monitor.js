@@ -83,20 +83,8 @@ const handler = async () => {
     // ── Detect status change ──────────────────────────
     const prevStatus    = site.lastStatus || null;
 
-    // Require 2 consecutive UP checks before declaring recovery
-    // This prevents false "back online" when site flaps
-    let effectiveStatus = status;
-    if (status === 'up' && prevStatus === 'down') {
-      // Check last 2 results — only declare UP if both are up
-      const recentChecks = data.checks[id].slice(-2);
-      const allUp = recentChecks.length >= 2 && recentChecks.every(c => c.status === 'up');
-      if (!allUp) {
-        // Still showing flap — keep as down until confirmed stable
-        effectiveStatus = 'down';
-        console.log(`[FLAP] ${site.name}: got 'up' but only ${recentChecks.filter(c=>c.status==='up').length}/2 consecutive — keeping as down`);
-      }
-    }
-
+    // Use raw check status — consecutive check handled at CF Worker level
+    const effectiveStatus = status;
     const statusChanged = prevStatus !== effectiveStatus;
 
     // ── Log incident ──────────────────────────────────
@@ -248,8 +236,9 @@ function checkSite(site) {
           method,
           timeout:  CHECK_TIMEOUT,
           headers:  {
-            'User-Agent': 'Uptracker/4 (+https://uptimetracker.netlify.app)',
-            'Accept':     '*/*',
+            'User-Agent':        'Uptracker/4 (+https://uptimetracker.netlify.app)',
+            'Accept':            '*/*',
+            'X-Uptracker-Check': 'health-monitor', // Worker bypass header
           },
         }, (res) => {
           clearTimeout(kill);
