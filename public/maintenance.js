@@ -137,12 +137,20 @@ async function poll() {
 
   try {
     const data = await fetchGistData();
+
+    if (!data || !data.sites) {
+      console.warn('[Maintenance] gist-proxy returned empty data');
+      document.getElementById('pollChipText').textContent = 'No data';
+      return;
+    }
+
+    // findSite tries ID → URL → first site
     const site = findSite(data.sites);
 
     if (!site) {
-      document.getElementById('pollChipText').textContent = 'No data';
-      // Still show the page with whatever we have
-      renderState('down', null, null, [], []);
+      // Should not happen since findSite falls back to sites[0]
+      console.warn('[Maintenance] No site found:', SITE_ID, SITE_URL);
+      document.getElementById('pollChipText').textContent = 'Site not found';
       return;
     }
 
@@ -160,7 +168,7 @@ async function poll() {
     if (isUp && SITE_URL && !isRedirecting) startRedirect();
 
   } catch (e) {
-    console.warn('[Uptracker] Poll error:', e.message);
+    console.error('[Maintenance] Poll error:', e.message);
     document.getElementById('pollChipText').textContent = 'Retrying…';
   }
 }
