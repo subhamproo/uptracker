@@ -48,12 +48,10 @@ const ICONS = {
 document.addEventListener('DOMContentLoaded', () => {
   populate();
   injectIcons();
-  initCanvas();
+  resizeCanvas();
   spawnParticles();
   setLoadingState();
   poll();
-  // Poll every 60 seconds — matches Netlify server check interval
-  // When site recovers, poll detects isUp=true → startRedirect() fires
   pollIntervalId = setInterval(poll, 60000);
 });
 
