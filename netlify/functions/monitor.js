@@ -82,14 +82,29 @@ const handler = async () => {
 
     // ── Detect status change ──────────────────────────
     const prevStatus    = site.lastStatus || null;
-    const statusChanged = prevStatus !== status;
+
+    // Require 2 consecutive UP checks before declaring recovery
+    // This prevents false "back online" when site flaps
+    let effectiveStatus = status;
+    if (status === 'up' && prevStatus === 'down') {
+      // Check last 2 results — only declare UP if both are up
+      const recentChecks = data.checks[id].slice(-2);
+      const allUp = recentChecks.length >= 2 && recentChecks.every(c => c.status === 'up');
+      if (!allUp) {
+        // Still showing flap — keep as down until confirmed stable
+        effectiveStatus = 'down';
+        console.log(`[FLAP] ${site.name}: got 'up' but only ${recentChecks.filter(c=>c.status==='up').length}/2 consecutive — keeping as down`);
+      }
+    }
+
+    const statusChanged = prevStatus !== effectiveStatus;
 
     // ── Log incident ──────────────────────────────────
     if (statusChanged) {
-      const evt = status === 'up' ? '✅ Site came back online' : '🔴 Site went down';
-      data.incidents[id].push({ ts: Date.now(), status, ms, code, event: evt });
+      const evt = effectiveStatus === 'up' ? '✅ Site came back online' : '🔴 Site went down';
+      data.incidents[id].push({ ts: Date.now(), status: effectiveStatus, ms, code, event: evt });
       if (data.incidents[id].length > MAX_INCIDENTS) data.incidents[id].shift();
-      console.log(`[INCIDENT] ${site.name}: ${prevStatus ?? 'new'} → ${status} (${ms}ms)`);
+      console.log(`[INCIDENT] ${site.name}: ${prevStatus ?? 'new'} → ${effectiveStatus} (${ms}ms)`);
     }
 
     // ── Cloudflare DNS Failover ────────────────────────
@@ -106,7 +121,7 @@ const handler = async () => {
       if (!cfToken) {
         console.warn(`[CF] ${site.name}: No CF token. Set CF_TOKEN in Netlify env vars.`);
       } else {
-      if (status === 'down') {
+      if (effectiveStatus === 'down') {
         const failoverRecord = {
           type:    'CNAME',
           name:    site.cfRecordName,
@@ -125,7 +140,7 @@ const handler = async () => {
           console.warn(`[CF-FAILOVER] ${site.name}: FAILED — ${cfResult.error}`);
         }
 
-      } else if (status === 'up' && site.cfFailoverActive) {
+      } else if (effectiveStatus === 'up' && site.cfFailoverActive) {
         const originalType    = site.cfOriginalType    || site.cfRecordType || 'A';
         const originalContent = site.cfOriginalContent || '';
 
@@ -158,15 +173,13 @@ const handler = async () => {
       let alertType  = 'status_change';
 
       if (site.alertMode === 'offline') {
-        // Only on DOWN status change
-        shouldSend = statusChanged && status === 'down';
+        shouldSend = statusChanged && effectiveStatus === 'down';
         alertType  = 'down';
       } else if (site.alertMode === 'both') {
         shouldSend = true;
-        if (status === 'down') {
+        if (effectiveStatus === 'down') {
           alertType = 'down';
         } else if (statusChanged && prevStatus === 'down') {
-          // Was down, now up → recovery alert (priority over heartbeat)
           alertType = 'recovery';
         } else {
           alertType = 'heartbeat';
@@ -175,22 +188,22 @@ const handler = async () => {
 
       if (shouldSend) {
         const failoverNote = (site.cfEnabled && statusChanged)
-          ? (status === 'down'
+          ? (effectiveStatus === 'down'
               ? '\n> 🔄 DNS failover activated — visitors redirected to maintenance page'
               : '\n> ✅ DNS failover deactivated — traffic restored to your server')
           : '';
-        await sendDiscord(site, status, ms, code, data, alertType, failoverNote).catch(e =>
+        await sendDiscord(site, effectiveStatus, ms, code, data, alertType, failoverNote).catch(e =>
           console.warn(`[Discord] ${site.name}: ${e.message}`)
         );
       }
     }
 
-    log.push(`${site.name}: ${status} (${ms}ms)${statusChanged ? ' [CHANGED]' : ''}${site.cfEnabled && statusChanged ? ' [CF-DNS]' : ''}`);
+    log.push(`${site.name}: ${effectiveStatus} (${ms}ms)${statusChanged ? ' [CHANGED]' : ''}${site.cfEnabled && statusChanged ? ' [CF-DNS]' : ''}`);
 
     // ── Update site record ──────────────────────────────
     sites[i] = {
-      ...(sites[i] || site),   // preserve any cfFailoverActive changes from above
-      lastStatus:  status,
+      ...(sites[i] || site),
+      lastStatus:  effectiveStatus,
       lastMs:      ms,
       lastCode:    code,
       lastChecked: new Date().toISOString(),
@@ -242,8 +255,11 @@ function checkSite(site) {
           clearTimeout(kill);
           res.resume();
           const code = res.statusCode;
-          // 2xx, 3xx, 4xx = site is up (responding). 5xx = server error = down
-          const status = code < 500 ? 'up' : 'down';
+          // Only 2xx and 3xx = truly up
+          // 4xx (403, 404, 523 etc) = Cloudflare/server error = down
+          // 5xx = server error = down
+          // 523 specifically = Cloudflare "Origin unreachable" = definitely down
+          const status = (code >= 200 && code < 400) ? 'up' : 'down';
           finish(status, Date.now() - start, code);
         });
 

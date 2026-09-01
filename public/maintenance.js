@@ -388,11 +388,48 @@ function startRedirect() {
   isRedirecting = true;
   clearInterval(pollIntervalId);
 
+  // Verify site is actually reachable before redirecting
+  // Prevents redirect to a site that's showing Cloudflare 523 etc
+  verifyAndRedirect();
+}
+
+async function verifyAndRedirect() {
+  if (!SITE_URL) return;
+
+  // Show "Verifying recovery..." state first
+  const banner = document.getElementById('recoveryBanner');
+  banner.style.display = 'flex';
+  document.getElementById('rbCountdown').textContent = '…';
+
+  try {
+    // Do a real HTTP check to confirm the site is actually up
+    // Use a fetch with no-cors — if it succeeds origin is reachable
+    const ctrl = new AbortController();
+    setTimeout(() => ctrl.abort(), 8000);
+    const res = await fetch(SITE_URL, {
+      method: 'HEAD',
+      mode: 'no-cors',
+      cache: 'no-store',
+      signal: ctrl.signal,
+    });
+    // If we get here, site is reachable — start countdown
+    startCountdown();
+  } catch (e) {
+    // Site not reachable — don't redirect, keep monitoring
+    console.warn('[Maintenance] Recovery verification failed — site not reachable yet:', e.message);
+    isRedirecting = false;
+    banner.style.display = 'none';
+    // Poll again in 30s
+    pollIntervalId = setInterval(poll, 30000);
+  }
+}
+
+function startCountdown() {
   const banner = document.getElementById('recoveryBanner');
   banner.style.display = 'flex';
 
   const circle = document.getElementById('rbCircle');
-  const total  = 2 * Math.PI * 20; // r=20
+  const total  = 2 * Math.PI * 20;
   circle.style.strokeDashoffset = total;
 
   let n = 5;
