@@ -35,19 +35,15 @@ function decryptCfToken(hex) {
     ).join('');
   } catch { return null; }
 }
+// ── CONFIG FROM ENV VARS ──────────────────────
+const GITHUB_TOKEN  = process.env.GITHUB_TOKEN;
 const GIST_ID       = process.env.GIST_ID;
 const GIST_FILE     = 'uptracker_data.json';
-
-// Cloudflare token from env var — NEVER stored in Gist or sent to browser
-// Set CF_TOKEN in Netlify environment variables dashboard
 const CF_TOKEN_ENV  = process.env.CF_TOKEN || null;
-
-// Maintenance page base URL — where Cloudflare will redirect traffic when site is down
+const MAINTENANCE_BASE = 'uptimetracker.netlify.app';
 const CHECK_TIMEOUT = 10000;
 const MAX_CHECKS    = 5000;
 const MAX_INCIDENTS = 5000;
-
-const MAINTENANCE_BASE = 'uptimetracker.netlify.app';
 const handler = async () => {
   if (!GITHUB_TOKEN || !GIST_ID) {
     console.error('[Uptracker] Missing GITHUB_TOKEN or GIST_ID');
@@ -228,29 +224,52 @@ function checkSite(site) {
 
     const kill = setTimeout(() => finish('down', CHECK_TIMEOUT, null), CHECK_TIMEOUT + 500);
 
-    try {
-      const u   = new URL(site.url);
-      const lib = u.protocol === 'https:' ? https : http;
-      const req = lib.request({
-        hostname: u.hostname,
-        port:     u.port || (u.protocol === 'https:' ? 443 : 80),
-        path:     (u.pathname || '/') + (u.search || ''),
-        method:   'HEAD',
-        timeout:  CHECK_TIMEOUT,
-        headers:  { 'User-Agent': 'Uptracker/4 (+https://uptimetracker.netlify.app)' },
-      }, (res) => {
+    function doRequest(method) {
+      try {
+        const u   = new URL(site.url);
+        const lib = u.protocol === 'https:' ? https : http;
+        const req = lib.request({
+          hostname: u.hostname,
+          port:     u.port || (u.protocol === 'https:' ? 443 : 80),
+          path:     (u.pathname || '/') + (u.search || ''),
+          method,
+          timeout:  CHECK_TIMEOUT,
+          headers:  {
+            'User-Agent': 'Uptracker/4 (+https://uptimetracker.netlify.app)',
+            'Accept':     '*/*',
+          },
+        }, (res) => {
+          clearTimeout(kill);
+          res.resume();
+          const code = res.statusCode;
+          // 2xx, 3xx, 4xx = site is up (responding). 5xx = server error = down
+          const status = code < 500 ? 'up' : 'down';
+          finish(status, Date.now() - start, code);
+        });
+
+        req.on('error', (err) => {
+          // If HEAD was rejected (405), retry with GET
+          if (method === 'HEAD' && !settled) {
+            req.destroy();
+            doRequest('GET');
+          } else {
+            clearTimeout(kill);
+            finish('down', Date.now() - start, null);
+          }
+        });
+        req.on('timeout', () => {
+          req.destroy();
+          clearTimeout(kill);
+          finish('down', CHECK_TIMEOUT, null);
+        });
+        req.end();
+      } catch (e) {
         clearTimeout(kill);
-        res.resume();
-        const code = res.statusCode;
-        finish(code < 500 ? 'up' : 'down', Date.now() - start, code);
-      });
-      req.on('error',   () => { clearTimeout(kill); finish('down', Date.now() - start, null); });
-      req.on('timeout', () => { clearTimeout(kill); req.destroy(); finish('down', CHECK_TIMEOUT, null); });
-      req.end();
-    } catch (e) {
-      clearTimeout(kill);
-      finish('down', Date.now() - start, null);
+        finish('down', Date.now() - start, null);
+      }
     }
+
+    doRequest('HEAD'); // try HEAD first, falls back to GET on error
   });
 }
 
