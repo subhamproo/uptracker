@@ -184,111 +184,126 @@ function findSite(sites) {
 
 // ── RENDER STATE ──────────────────────────────
 function renderState(state, site, upPct, checks, incidents) {
-  currentState = state;
-  const isUp   = state === 'up';
-  const isDown = state === 'down';
+  try {
+    currentState = state;
+    const isUp   = state === 'up';
+    const isDown = state === 'down';
 
-  // Status badge
-  const sinceStr = site?.lastChecked ? relTime(new Date(site.lastChecked)) : '';
-  setStatusBadge(
-    state,
-    isUp   ? 'All Systems Operational' :
-    isDown ? 'Service Disruption Detected' : 'Monitoring…',
-    sinceStr
-  );
+    // Status badge
+    const sinceStr = site?.lastChecked ? relTime(new Date(site.lastChecked)) : '';
+    setStatusBadge(
+      state,
+      isUp   ? 'All Systems Operational' :
+      isDown ? 'Service Disruption Detected' : 'Monitoring…',
+      sinceStr
+    );
 
-  // Headline
-  const hl = document.getElementById('copyHeadline');
-  if (isUp) {
-    hl.innerHTML = `We're back<br/><span class="grad green">online.</span><span class="cursor-blink">_</span>`;
-    document.getElementById('copySub').innerHTML =
-      `<strong id="copySiteName">${SITE_NAME}</strong> has fully recovered and is responding normally.`;
-  } else if (isDown) {
-    hl.innerHTML = `We'll be right<br/><span class="grad">back.</span><span class="cursor-blink">_</span>`;
-    document.getElementById('copySub').innerHTML =
-      `We're working to restore <strong id="copySiteName">${SITE_NAME}</strong> as quickly as possible. Our team has been notified.`;
+    // Headline
+    const hl = document.getElementById('copyHeadline');
+    if (hl) {
+      if (isUp) {
+        hl.innerHTML = `We're back<br/><span class="grad green">online.</span><span class="cursor-blink">_</span>`;
+        const sub = document.getElementById('copySub');
+        if (sub) sub.innerHTML = `<strong>${SITE_NAME}</strong> has fully recovered and is responding normally.`;
+      } else if (isDown) {
+        hl.innerHTML = `We'll be right<br/><span class="grad">back.</span><span class="cursor-blink">_</span>`;
+        const sub = document.getElementById('copySub');
+        if (sub) sub.innerHTML = `We're working to restore <strong>${SITE_NAME}</strong> as quickly as possible.`;
+      }
+    }
+
+    // Status card
+    const ms = site?.lastMs || null;
+    setStatusCard(
+      state,
+      isUp   ? 'All Systems Operational'    :
+      isDown ? 'Service Disruption Detected' : 'Checking…',
+      isUp   ? `Responding normally${ms ? ' · ' + ms + 'ms' : ''}` :
+      isDown ? `Unreachable${ms ? ' · Last response ' + ms + 'ms' : ''}` :
+               'Connecting to monitoring server',
+      ms
+    );
+
+    const scTime = document.getElementById('scTime');
+    if (scTime && site?.lastChecked) {
+      scTime.textContent = new Date(site.lastChecked).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+    }
+
+    // Metrics — null-safe
+    const elUptime = document.getElementById('mcUptime');
+    if (elUptime && upPct !== null) {
+      elUptime.textContent = upPct + '%';
+      elUptime.className   = `mc-val ${upPct >= 99 ? 'good' : upPct >= 90 ? 'warn' : 'bad'}`;
+      const bar = document.getElementById('mcUptimeBar');
+      if (bar) bar.style.width = upPct + '%';
+    }
+
+    const elResp = document.getElementById('mcResponse');
+    if (elResp && ms) {
+      elResp.textContent = ms + 'ms';
+      elResp.className   = `mc-val ${ms < 600 ? 'good' : ms < 1500 ? 'warn' : 'bad'}`;
+      const tag = document.getElementById('mcResponseTag');
+      if (tag) {
+        tag.textContent = ms < 600 ? 'Fast' : ms < 1500 ? 'Slow' : 'Timeout';
+        tag.className   = `mc-tag ${ms < 600 ? 'good' : ms < 1500 ? 'warn' : 'bad'}`;
+      }
+    }
+
+    const downIncs = (incidents || []).filter(i => i.status === 'down');
+    const elOut = document.getElementById('mcOutages');
+    if (elOut) {
+      elOut.textContent = downIncs.length;
+      elOut.className   = `mc-val ${downIncs.length === 0 ? 'good' : downIncs.length < 5 ? 'warn' : 'bad'}`;
+    }
+
+    const elChk = document.getElementById('mcChecks');
+    if (elChk) {
+      elChk.textContent = (checks || []).length;
+      elChk.className   = `mc-val ${(checks || []).length > 0 ? '' : 'dim'}`;
+    }
+
+    // Progress bar
+    if (upPct !== null) {
+      const cls  = upPct >= 90 ? 'good' : upPct >= 70 ? 'warn' : '';
+      const fill = document.getElementById('progFill');
+      const glow = document.getElementById('progGlow');
+      if (fill) { fill.style.width = upPct + '%'; fill.className = `prog-fill ${cls}`; }
+      if (glow) { glow.style.width = upPct + '%'; glow.className = `prog-glow ${cls}`; }
+      const score = document.getElementById('progScore');
+      if (score) score.textContent = upPct + '%';
+      const lbl = document.getElementById('progChecksLabel');
+      if (lbl) lbl.textContent = `${(checks||[]).length} checks · ${(checks||[]).filter(c=>c.status==='up').length} successful`;
+    }
+
+    // Sparkline
+    renderSparkline((checks || []).slice(-40));
+
+    // Incidents
+    renderIncidents([...(incidents || [])].reverse().slice(0, 8));
+
+    // Orb
+    const orbEl  = document.getElementById('orbContainer');
+    const coreEl = document.getElementById('orbCore');
+    const iconEl = document.getElementById('orbIconSvg');
+    if (orbEl)  orbEl.className  = `orb-container ${isUp ? 'up' : ''}`;
+    if (coreEl) coreEl.className = `orb-core ${isUp ? 'up' : ''}`;
+    if (iconEl) {
+      iconEl.innerHTML = isUp ? ICONS.ok : isDown ? ICONS.wrench : ICONS.loading;
+      iconEl.className = `orb-icon-svg ${isUp ? 'up' : ''} ${currentState === 'loading' ? 'spin' : ''}`;
+    }
+    const orbTxt = document.getElementById('orbStatusText');
+    if (orbTxt) orbTxt.textContent =
+      isUp   ? 'All systems operational' :
+      isDown ? 'Service disruption detected' : 'Checking…';
+
+    // Canvas + glow
+    setCanvasMode(isUp ? 'green' : 'red');
+    const bgGlow = document.getElementById('bgGlow');
+    if (bgGlow) bgGlow.className = `bg-glow${isUp ? ' green' : ''}`;
+
+  } catch (err) {
+    console.error('[renderState] Error:', err.message, err.stack);
   }
-
-  // Status card
-  const ms = site?.lastMs;
-  setStatusCard(
-    state,
-    isUp   ? 'All Systems Operational'     :
-    isDown ? 'Service Disruption Detected'  : 'Checking…',
-    isUp   ? `Responding normally${ms ? ' · ' + ms + 'ms' : ''}` :
-    isDown ? `Unreachable${ms ? ' · Last response ' + ms + 'ms' : ''}` :
-             'Connecting to monitoring server',
-    ms
-  );
-
-  if (site?.lastChecked) {
-    document.getElementById('scTime').textContent =
-      new Date(site.lastChecked).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
-  }
-
-  // Metrics
-  if (upPct !== null) {
-    const el = document.getElementById('mcUptime');
-    el.textContent = upPct + '%';
-    el.className   = `mc-val ${upPct >= 99 ? 'good' : upPct >= 90 ? 'warn' : 'bad'}`;
-    document.getElementById('mcUptimeBar').style.width = upPct + '%';
-  }
-
-  if (ms) {
-    const el  = document.getElementById('mcResponse');
-    el.textContent = ms + 'ms';
-    el.className   = `mc-val ${ms < 600 ? 'good' : ms < 1500 ? 'warn' : 'bad'}`;
-    const tag = document.getElementById('mcResponseTag');
-    tag.textContent = ms < 600 ? 'Fast' : ms < 1500 ? 'Slow' : 'Timeout';
-    tag.className   = `mc-tag ${ms < 600 ? 'good' : ms < 1500 ? 'warn' : 'bad'}`;
-  }
-
-  const downIncs = incidents.filter(i => i.status === 'down');
-  const outEl = document.getElementById('mcOutages');
-  outEl.textContent = downIncs.length;
-  outEl.className   = `mc-val ${downIncs.length === 0 ? 'good' : downIncs.length < 5 ? 'warn' : 'bad'}`;
-
-  const chkEl = document.getElementById('mcChecks');
-  chkEl.textContent = checks.length;
-  chkEl.className   = `mc-val ${checks.length > 0 ? '' : 'dim'}`;
-
-  // Progress bar
-  if (upPct !== null) {
-    const cls = upPct >= 90 ? 'good' : upPct >= 70 ? 'warn' : '';
-    const fill = document.getElementById('progFill');
-    const glow = document.getElementById('progGlow');
-    fill.style.width = upPct + '%';
-    glow.style.width = upPct + '%';
-    fill.className = `prog-fill ${cls}`;
-    glow.className = `prog-glow ${cls}`;
-    document.getElementById('progScore').textContent     = upPct + '%';
-    document.getElementById('progChecksLabel').textContent =
-      `${checks.length} checks · ${checks.filter(c=>c.status==='up').length} successful`;
-  }
-
-  // Sparkline
-  renderSparkline(checks.slice(-40));
-
-  // Incidents
-  renderIncidents([...incidents].reverse().slice(0, 8));
-
-  // Orb
-  const orbEl  = document.getElementById('orbContainer');
-  const coreEl = document.getElementById('orbCore');
-  const iconEl = document.getElementById('orbIconSvg');
-  orbEl.className  = `orb-container ${isUp ? 'up' : ''}`;
-  coreEl.className = `orb-core ${isUp ? 'up' : ''}`;
-  if (iconEl) {
-    iconEl.innerHTML = isUp ? ICONS.ok : isDown ? ICONS.wrench : ICONS.loading;
-    iconEl.className = `orb-icon-svg ${isUp ? 'up' : ''} ${currentState === 'loading' ? 'spin' : ''}`;
-  }
-  document.getElementById('orbStatusText').textContent =
-    isUp   ? 'All systems operational' :
-    isDown ? 'Service disruption detected' : 'Checking…';
-
-  // Canvas + glow
-  setCanvasMode(isUp ? 'green' : 'red');
-  document.getElementById('bgGlow').className = `bg-glow${isUp ? ' green' : ''}`;
 }
 
 // ── STATUS BADGE & CARD ───────────────────────
