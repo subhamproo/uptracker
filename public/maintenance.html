@@ -8,25 +8,22 @@
   <meta name="theme-color" content="#060b18" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,300&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="maintenance.css" />
   <script src="config.js" onerror="void 0"></script>
 </head>
 <body>
 
-  <!-- BG Layers -->
   <div class="bg-grid"></div>
   <div class="bg-glow" id="bgGlow"></div>
   <canvas id="bgCanvas"></canvas>
   <div class="noise"></div>
-
-  <!-- Particles -->
   <div id="particles"></div>
 
   <!-- HEADER -->
   <header class="site-header">
-    <div class="site-brand" id="siteBrand">
-      <div class="brand-avatar" id="brandAvatar">
+    <div class="site-brand">
+      <div class="brand-avatar">
         <img id="brandFavicon" src="" alt="" />
         <span id="brandInitial">?</span>
       </div>
@@ -35,16 +32,11 @@
         <div class="brand-domain" id="brandDomain"></div>
       </div>
     </div>
-
     <div class="header-center">
-      <div class="live-badge">
-        <span class="live-dot"></span>
-        LIVE MONITORING
-      </div>
+      <div class="live-badge"><span class="live-dot"></span>LIVE MONITORING</div>
     </div>
-
     <div class="header-right">
-      <div class="poll-chip" id="pollChip">
+      <div class="poll-chip">
         <span class="poll-spinner" id="pollSpinner"></span>
         <span id="pollChipText">Connecting…</span>
       </div>
@@ -55,80 +47,88 @@
     </div>
   </header>
 
-  <!-- MAIN -->
+  <!-- MAIN GRID -->
   <main class="main-grid">
 
-    <!-- ═══════════ LEFT ═══════════ -->
+    <!-- LEFT -->
     <section class="col-left">
 
-      <!-- Status badge -->
-      <div class="status-badge" id="statusBadge">
+      <div class="status-badge loading" id="statusBadge">
         <span class="status-badge-dot" id="statusBadgeDot"></span>
         <span id="statusBadgeText">Checking status…</span>
         <span class="status-badge-since" id="statusBadgeSince"></span>
       </div>
 
-      <!-- Main copy -->
       <div class="copy-block">
         <h1 class="copy-headline" id="copyHeadline">
-          We'll be<br/>right back<span class="cursor-blink">_</span>
+          We'll be right<br/><span class="grad">back.</span><span class="cursor-blink">_</span>
         </h1>
         <p class="copy-sub" id="copySub">
           We're performing scheduled maintenance on <strong id="copySiteName">this service</strong>.
-          Our team is actively working to restore full functionality as quickly as possible.
+          Our team is actively working to restore full functionality.
         </p>
       </div>
 
-      <!-- Live status card -->
-      <div class="status-card" id="statusCard">
+      <div class="status-card loading" id="statusCard">
         <div class="status-card-header">
           <span class="sc-label">Live Status</span>
           <span class="sc-time" id="scTime">—</span>
         </div>
-        <div class="status-indicator" id="statusIndicator">
-          <div class="si-dot" id="siDot"></div>
+        <div class="status-indicator">
+          <div class="si-dot loading" id="siDot"></div>
           <div class="si-text">
-            <span class="si-state" id="siState">Checking…</span>
+            <span class="si-state loading" id="siState">Checking…</span>
             <span class="si-detail" id="siDetail">Connecting to monitoring server</span>
           </div>
           <div class="si-ms" id="siMs">—</div>
         </div>
       </div>
 
-      <!-- Metrics Grid -->
+      <!-- Metrics -->
       <div class="metrics-grid">
+
         <div class="metric-card" id="mc-uptime">
-          <div class="mc-icon">📊</div>
+          <div class="mc-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          </div>
           <div class="mc-body">
-            <div class="mc-val" id="mcUptime">—</div>
+            <div class="mc-val dim" id="mcUptime">—</div>
             <div class="mc-label">Overall Uptime</div>
           </div>
-          <div class="mc-bar-track">
-            <div class="mc-bar-fill" id="mcUptimeBar"></div>
-          </div>
+          <div class="mc-bar-track"><div class="mc-bar-fill" id="mcUptimeBar" style="width:0%"></div></div>
         </div>
+
         <div class="metric-card" id="mc-response">
-          <div class="mc-icon">⚡</div>
+          <div class="mc-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          </div>
           <div class="mc-body">
-            <div class="mc-val" id="mcResponse">—</div>
+            <div class="mc-val dim" id="mcResponse">—</div>
             <div class="mc-label">Last Response</div>
           </div>
           <div class="mc-tag" id="mcResponseTag"></div>
         </div>
+
         <div class="metric-card" id="mc-outages">
-          <div class="mc-icon">🚨</div>
+          <div class="mc-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          </div>
           <div class="mc-body">
-            <div class="mc-val" id="mcOutages">—</div>
+            <div class="mc-val dim" id="mcOutages">—</div>
             <div class="mc-label">Total Outages</div>
           </div>
         </div>
+
         <div class="metric-card" id="mc-checks">
-          <div class="mc-icon">🔍</div>
+          <div class="mc-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          </div>
           <div class="mc-body">
-            <div class="mc-val" id="mcChecks">—</div>
+            <div class="mc-val dim" id="mcChecks">—</div>
             <div class="mc-label">Total Checks</div>
           </div>
         </div>
+
       </div>
 
       <!-- Sparkline -->
@@ -150,10 +150,9 @@
 
     </section>
 
-    <!-- ═══════════ RIGHT ═══════════ -->
+    <!-- RIGHT -->
     <section class="col-right">
 
-      <!-- Hero status orb -->
       <div class="orb-section">
         <div class="orb-container" id="orbContainer">
           <div class="orb-ring r4"></div>
@@ -162,17 +161,15 @@
           <div class="orb-ring r1"></div>
           <div class="orb-core" id="orbCore">
             <div class="orb-inner" id="orbInner">
-              <span class="orb-emoji" id="orbEmoji">🔧</span>
+              <!-- SVG icon injected by maintenance.js -->
             </div>
           </div>
-          <!-- Rotating scan line -->
-          <div class="orb-scan" id="orbScan"></div>
+          <div class="orb-scan"></div>
         </div>
         <div class="orb-status-text" id="orbStatusText">Monitoring active</div>
-        <div class="orb-sub-text" id="orbSubText">Uptracker server checks every 60s</div>
+        <div class="orb-sub-text">Uptracker server checks every 60s</div>
       </div>
 
-      <!-- Progress card -->
       <div class="prog-card">
         <div class="prog-header">
           <div class="prog-title-row">
@@ -180,18 +177,17 @@
             <span class="prog-score" id="progScore">—</span>
           </div>
           <div class="prog-track">
-            <div class="prog-fill" id="progFill"></div>
-            <div class="prog-glow" id="progGlow"></div>
+            <div class="prog-fill" id="progFill" style="width:0%"></div>
+            <div class="prog-glow" id="progGlow" style="width:0%"></div>
           </div>
           <div class="prog-labels">
             <span class="prog-label-l">Critical</span>
-            <span class="prog-label-c" id="progChecksLabel">Loading…</span>
+            <span class="prog-label-c" id="progChecksLabel">Waiting for data…</span>
             <span class="prog-label-r">Healthy</span>
           </div>
         </div>
       </div>
 
-      <!-- Incident timeline -->
       <div class="incident-card">
         <div class="incident-header">
           <div class="incident-title">
@@ -202,20 +198,19 @@
         </div>
         <div class="incident-list" id="incidentList">
           <div class="incident-empty">
-            <svg viewBox="0 0 24 24" fill="none" width="24" height="24"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.5" opacity=".3"/><path d="M12 8v4M12 16h.01" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            <svg viewBox="0 0 24 24" fill="none" width="24" height="24"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.5" opacity=".3"/><path d="M8 12l3 3 5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
             <span>No incidents recorded</span>
           </div>
         </div>
       </div>
 
-      <!-- Recovery notice (hidden) -->
       <div class="recovery-banner" id="recoveryBanner" style="display:none">
         <div class="rb-left">
           <div class="rb-icon-svg">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="30" height="30"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
           </div>
           <div>
-            <div class="rb-title">Service Restored</div>
+            <div class="rb-title">Service Restored!</div>
             <div class="rb-sub">Redirecting in <strong id="rbCountdown">5</strong>s</div>
           </div>
         </div>
@@ -230,14 +225,13 @@
         </div>
       </div>
 
-      <!-- Footer -->
       <div class="right-footer">
         <div class="powered">
           <svg viewBox="0 0 24 24" fill="none" width="14" height="14"><circle cx="12" cy="12" r="10" stroke="url(#pwg)" stroke-width="1.8"/><path d="M8 12l3 3 5-5" stroke="url(#pwg)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><defs><linearGradient id="pwg" x1="0" y1="0" x2="24" y2="24" gradientUnits="userSpaceOnUse"><stop stop-color="#6ee7b7"/><stop offset="1" stop-color="#3b82f6"/></linearGradient></defs></svg>
           Monitored by <span class="powered-name">Uptracker</span>
         </div>
         <div class="footer-links">
-          <a href="/" target="_blank">Dashboard</a>
+          <a href="/">Dashboard</a>
           <span>·</span>
           <a href="#" id="footerVisit">Visit site</a>
         </div>
